@@ -28,6 +28,9 @@ export default function UsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<User | null>(null);
   const [membershipUser, setMembershipUser] = useState<User | null>(null);
+  const [jwtUser, setJwtUser] = useState<User | null>(null);
+  const [jwtToken, setJwtToken] = useState("");
+  const [jwtLoading, setJwtLoading] = useState(false);
   const [membershipDays, setMembershipDays] = useState("7");
   const [membershipPrice, setMembershipPrice] = useState("80");
   const [saving, setSaving] = useState(false);
@@ -70,6 +73,34 @@ export default function UsersPage() {
     setMembershipUser(user);
     setMembershipDays("7");
     setMembershipPrice("80");
+  }
+
+  async function openJwt(user: User) {
+    setJwtUser(user);
+    setJwtToken("");
+    setJwtLoading(true);
+    try {
+      const detail = await api.getUser(user.id);
+      setJwtToken(detail.jwtToken ?? "");
+    } catch (err) {
+      setJwtUser(null);
+      toast(
+        err instanceof ApiError ? err.message : "Error al cargar el JWT",
+        "error",
+      );
+    } finally {
+      setJwtLoading(false);
+    }
+  }
+
+  async function copyJwt() {
+    if (!jwtToken) return;
+    try {
+      await navigator.clipboard.writeText(jwtToken);
+      toast("JWT copiado");
+    } catch {
+      toast("No se pudo copiar", "error");
+    }
   }
 
   async function onSave(e: FormEvent) {
@@ -183,6 +214,9 @@ export default function UsersPage() {
                     <Button variant="secondary" onClick={() => openEdit(user)}>
                       Editar
                     </Button>
+                    <Button variant="ghost" onClick={() => void openJwt(user)}>
+                      Ver JWT
+                    </Button>
                     {!active ? (
                       <Button onClick={() => openMembership(user)}>
                         Agregar membresía
@@ -284,6 +318,51 @@ export default function UsersPage() {
             required
           />
         </form>
+      </Modal>
+
+      <Modal
+        open={!!jwtUser}
+        title="JWT del usuario"
+        onClose={() => {
+          setJwtUser(null);
+          setJwtToken("");
+        }}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setJwtUser(null);
+                setJwtToken("");
+              }}
+            >
+              Cerrar
+            </Button>
+            <Button onClick={() => void copyJwt()} disabled={!jwtToken}>
+              Copiar
+            </Button>
+          </>
+        }
+      >
+        <p className="mb-3 text-sm text-slate-600">
+          Token de{" "}
+          <strong>{userDisplayName(jwtUser)}</strong>
+          {jwtUser?.email ? ` (${jwtUser.email})` : ""}. Solo visible para
+          admin; no se escribe en logs.
+        </p>
+        {jwtLoading ? (
+          <p className="text-sm text-slate-500">Cargando...</p>
+        ) : jwtToken ? (
+          <Textarea
+            label="jwt_token"
+            rows={8}
+            readOnly
+            value={jwtToken}
+            className="font-mono text-xs"
+          />
+        ) : (
+          <p className="text-sm text-slate-500">Este usuario no tiene JWT guardado.</p>
+        )}
       </Modal>
     </div>
   );
