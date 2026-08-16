@@ -15,10 +15,7 @@ import type {
 } from "./types";
 
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ??
-  (process.env.NODE_ENV === "production"
-    ? "https://latidos-ve.vercel.app"
-    : "http://localhost:3100");
+  process.env.NEXT_PUBLIC_API_URL ?? "https://latidos-ve.vercel.app";
 
 export class ApiError extends Error {
   status: number;
