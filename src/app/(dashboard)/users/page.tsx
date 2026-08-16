@@ -214,7 +214,7 @@ export default function UsersPage() {
                     <Button variant="secondary" onClick={() => openEdit(user)}>
                       Editar
                     </Button>
-                    <Button variant="ghost" onClick={() => void openJwt(user)}>
+                    <Button variant="secondary" onClick={() => void openJwt(user)}>
                       Ver JWT
                     </Button>
                     {!active ? (
