@@ -26,10 +26,16 @@ export function userDisplayName(user?: {
   firstName?: string | null;
   lastName?: string | null;
   email?: string | null;
+  displayName?: string | null;
+  dasherId?: string | null;
+  sub?: string | null;
 } | null): string {
   if (!user) return "—";
   const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
   if (name) return name;
+  if (user.displayName) return user.displayName;
   if (user.email) return user.email;
+  if (user.dasherId) return `Dasher ${user.dasherId}`;
+  if (user.sub) return user.sub.slice(0, 18);
   return "Sin nombre";
 }

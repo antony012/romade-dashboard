@@ -24,6 +24,8 @@ export interface MembershipUser {
   email: string | null;
   firstName: string | null;
   lastName: string | null;
+  displayName?: string | null;
+  dasherId?: string | null;
   sub: string | null;
 }
 
@@ -56,8 +58,10 @@ export interface User {
   email: string | null;
   firstName: string | null;
   lastName: string | null;
+  displayName?: string | null;
   phone: string | null;
   notes: string | null;
+  dasherId?: string | null;
   sub: string | null;
   iss: string | null;
   aud: string | null;
