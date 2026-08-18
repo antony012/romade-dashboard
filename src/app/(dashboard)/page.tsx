@@ -174,16 +174,20 @@ export default function HomePage() {
                     tone={
                       m.isCurrentlyActive
                         ? "success"
-                        : m.cancelledAt
-                          ? "danger"
-                          : "warning"
+                        : m.status === "pending" || m.isPendingPayment
+                          ? "warning"
+                          : m.cancelledAt
+                            ? "danger"
+                            : "warning"
                     }
                   >
                     {m.isCurrentlyActive
                       ? "Activa"
-                      : m.cancelledAt
-                        ? "Cancelada"
-                        : "Expirada"}
+                      : m.status === "pending" || m.isPendingPayment
+                        ? "Pendiente de pago"
+                        : m.cancelledAt
+                          ? "Cancelada"
+                          : "Expirada"}
                   </Badge>
                 </div>
               ))}

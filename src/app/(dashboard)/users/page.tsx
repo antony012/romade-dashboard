@@ -21,6 +21,15 @@ function hasActiveMembership(user: User): boolean {
   return (user.memberships ?? []).some((m) => m.isCurrentlyActive);
 }
 
+function hasPendingMembership(user: User): boolean {
+  return (user.memberships ?? []).some(
+    (m) =>
+      m.status === "pending" ||
+      m.isPendingPayment === true ||
+      m.canVerifyPayment === true,
+  );
+}
+
 export default function UsersPage() {
   const { toast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
@@ -192,6 +201,7 @@ export default function UsersPage() {
         >
           {users.map((user) => {
             const active = hasActiveMembership(user);
+            const pending = hasPendingMembership(user);
             return (
               <tr key={user.id} className="hover:bg-slate-50">
                 <td className="px-4 py-3 font-medium text-slate-900">
@@ -202,6 +212,8 @@ export default function UsersPage() {
                 <td className="px-4 py-3">
                   {active ? (
                     <Badge tone="success">Activa</Badge>
+                  ) : pending ? (
+                    <Badge tone="warning">Pendiente de pago</Badge>
                   ) : (
                     <Badge tone="neutral">Sin activa</Badge>
                   )}

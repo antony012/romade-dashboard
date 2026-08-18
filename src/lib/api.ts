@@ -154,6 +154,17 @@ export const api = {
     );
   },
 
+  verifyPayment(id: string, options?: { days?: number; price?: number }) {
+    const params = new URLSearchParams();
+    if (options?.days != null) params.set("days", String(options.days));
+    if (options?.price != null) params.set("price", String(options.price));
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return request<Membership>(
+      `/api/v1/admin/memberships/${id}/verify-payment${query}`,
+      { method: "PATCH" },
+    );
+  },
+
   listAdmins() {
     return request<Admin[]>("/api/v1/admin/admins");
   },

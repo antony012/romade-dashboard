@@ -27,17 +27,25 @@ export interface MembershipUser {
   sub: string | null;
 }
 
+export type MembershipStatus = "pending" | "active" | "cancelled" | "expired";
+
 export interface Membership {
   id: string;
   userId: string;
+  status?: MembershipStatus;
   isActive: boolean;
   isCurrentlyActive: boolean;
+  isPendingPayment?: boolean;
+  canVerifyPayment?: boolean;
+  canCancel?: boolean;
+  canReactivate?: boolean;
   price: number;
   currency: string;
-  startsAt: string;
-  expiresAt: string;
+  startsAt: string | null;
+  expiresAt: string | null;
   cancelledAt: string | null;
   cancelReason: string | null;
+  paymentVerifiedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   user?: MembershipUser;

@@ -42,6 +42,7 @@ export default function MembershipsPage() {
   const [reactivateTarget, setReactivateTarget] = useState<Membership | null>(
     null,
   );
+  const [verifyTarget, setVerifyTarget] = useState<Membership | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [createForm, setCreateForm] = useState({
@@ -52,6 +53,10 @@ export default function MembershipsPage() {
   const [editForm, setEditForm] = useState({ days: "", price: "80" });
   const [cancelReason, setCancelReason] = useState("");
   const [reactivateForm, setReactivateForm] = useState({
+    days: "7",
+    price: "80",
+  });
+  const [verifyForm, setVerifyForm] = useState({
     days: "7",
     price: "80",
   });
@@ -93,6 +98,22 @@ export default function MembershipsPage() {
       days: "7",
       price: String(m.price ?? 80),
     });
+  }
+
+  function openVerify(m: Membership) {
+    setVerifyTarget(m);
+    setVerifyForm({
+      days: "7",
+      price: String(m.price ?? 80),
+    });
+  }
+
+  function isPending(m: Membership) {
+    return (
+      m.status === "pending" ||
+      m.isPendingPayment === true ||
+      m.canVerifyPayment === true
+    );
   }
 
   async function onCreate(e: FormEvent) {
@@ -216,8 +237,41 @@ export default function MembershipsPage() {
     }
   }
 
+  async function onVerify(e: FormEvent) {
+    e.preventDefault();
+    if (!verifyTarget) return;
+
+    const price = parsePositivePrice(verifyForm.price);
+    if (price == null) {
+      toast("El precio debe ser mayor a 0", "error");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const updated = await api.verifyPayment(verifyTarget.id, {
+        days: parsePositiveDays(verifyForm.days),
+        price,
+      });
+      setMemberships((prev) =>
+        prev.map((m) => (m.id === updated.id ? updated : m)),
+      );
+      setVerifyTarget(null);
+      setVerifyForm({ days: "7", price: "80" });
+      toast("Pago verificado. Suscripción activa.");
+    } catch (err) {
+      toast(
+        err instanceof ApiError ? err.message : "Error al verificar el pago",
+        "error",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function statusBadge(m: Membership) {
     if (m.isCurrentlyActive) return <Badge tone="success">Activa</Badge>;
+    if (isPending(m)) return <Badge tone="warning">Pendiente de pago</Badge>;
     if (m.cancelledAt) return <Badge tone="danger">Cancelada</Badge>;
     return <Badge tone="warning">Expirada</Badge>;
   }
@@ -229,7 +283,7 @@ export default function MembershipsPage() {
     <div>
       <PageHeader
         title="Suscripciones"
-        description="Crear, editar precio, cancelar y reactivar membresías"
+        description="Las cuentas nuevas quedan pendientes hasta verificar el pago"
         actions={
           <Button onClick={() => setCreateOpen(true)}>Nueva suscripción</Button>
         }
@@ -294,6 +348,10 @@ export default function MembershipsPage() {
                       onClick={() => setCancelTarget(m)}
                     >
                       Cancelar
+                    </Button>
+                  ) : isPending(m) ? (
+                    <Button onClick={() => openVerify(m)}>
+                      Verificar pago
                     </Button>
                   ) : (
                     <Button
@@ -479,6 +537,53 @@ export default function MembershipsPage() {
             value={reactivateForm.price}
             onChange={(e) =>
               setReactivateForm({ ...reactivateForm, price: e.target.value })
+            }
+            required
+          />
+        </form>
+      </Modal>
+
+      <Modal
+        open={!!verifyTarget}
+        title="Verificar pago"
+        onClose={() => setVerifyTarget(null)}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setVerifyTarget(null)}
+            >
+              Volver
+            </Button>
+            <Button onClick={onVerify} disabled={saving}>
+              {saving ? "Habilitando..." : "Verificar y habilitar"}
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={onVerify} className="space-y-3">
+          <p className="text-sm text-slate-600">
+            Confirma el pago y activa la suscripción de{" "}
+            <strong>{userDisplayName(verifyTarget?.user)}</strong>. El
+            periodo de días empieza ahora.
+          </p>
+          <Input
+            label="Días"
+            type="number"
+            min={1}
+            value={verifyForm.days}
+            onChange={(e) =>
+              setVerifyForm({ ...verifyForm, days: e.target.value })
+            }
+          />
+          <Input
+            label="Precio (USD)"
+            type="number"
+            min={0.01}
+            step="0.01"
+            value={verifyForm.price}
+            onChange={(e) =>
+              setVerifyForm({ ...verifyForm, price: e.target.value })
             }
             required
           />
