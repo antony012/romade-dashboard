@@ -353,7 +353,7 @@ export default function MembershipsPage() {
                     <Button onClick={() => openVerify(m)}>
                       Verificar pago
                     </Button>
-                  ) : (
+                  ) : m.canReactivate === false ? null : (
                     <Button
                       variant="secondary"
                       onClick={() => openReactivate(m)}
