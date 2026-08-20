@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DoorDash Admin",
-  description: "Panel de administración",
+  title: "RomaDe Admin",
+  description: "Panel de administración de RomaDe",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
