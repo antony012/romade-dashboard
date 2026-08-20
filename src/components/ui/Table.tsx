@@ -8,22 +8,22 @@ export function Table({
   children: ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="overflow-hidden rounded-3xl border border-zinc-200/80 bg-white/80 shadow-sm shadow-zinc-950/5 backdrop-blur">
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
-          <thead className="bg-slate-50">
+        <table className="min-w-full divide-y divide-zinc-100 text-left text-sm">
+          <thead className="bg-zinc-50/80">
             <tr>
               {headers.map((header) => (
                 <th
                   key={header}
-                  className="px-4 py-3 font-medium text-slate-600"
+                  className="px-4 py-3.5 text-xs font-semibold uppercase tracking-wider text-zinc-500"
                 >
                   {header}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">{children}</tbody>
+          <tbody className="divide-y divide-zinc-100">{children}</tbody>
         </table>
       </div>
     </div>

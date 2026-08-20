@@ -22,9 +22,9 @@ export function Modal({ open, title, onClose, children, footer }: ModalProps) {
         className="absolute inset-0 bg-slate-900/40"
         onClick={onClose}
       />
-      <div className="relative z-10 w-full max-w-lg rounded-xl border border-slate-200 bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+      <div className="relative z-10 w-full max-w-lg rounded-3xl border border-zinc-200 bg-white shadow-2xl shadow-zinc-950/10">
+        <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4">
+          <h2 className="text-base font-semibold text-zinc-950">{title}</h2>
           <Button variant="ghost" onClick={onClose} className="px-2 py-1">
             ✕
           </Button>

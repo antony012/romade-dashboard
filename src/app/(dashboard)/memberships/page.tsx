@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import { formatDate, formatMoney, userDisplayName } from "@/lib/format";
+import { formatDate, formatMoney, membershipUserHint, userDisplayName } from "@/lib/format";
 import type { Membership, User } from "@/lib/types";
 import { useToast } from "@/context/ToastContext";
 import { Button } from "@/components/ui/Button";
@@ -17,10 +17,11 @@ import {
 } from "@/components/ui/States";
 import { Table } from "@/components/ui/Table";
 
-function parsePositivePrice(value: string): number | null {
+function parseMoneyAmount(value: string, allowZero = false): number | null {
   const price = Number(value);
-  if (!Number.isFinite(price) || price <= 0) return null;
-  return price;
+  if (!Number.isFinite(price) || price < 0) return null;
+  if (!allowZero && price <= 0) return null;
+  return Math.round(price * 100) / 100;
 }
 
 function parsePositiveDays(value: string): number | undefined {
@@ -60,6 +61,10 @@ export default function MembershipsPage() {
     days: "7",
     price: "80",
   });
+  const [filter, setFilter] = useState<
+    "all" | "active" | "pending" | "cancelled" | "expired"
+  >("all");
+  const [purgeOpen, setPurgeOpen] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -118,7 +123,7 @@ export default function MembershipsPage() {
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();
-    const price = parsePositivePrice(createForm.price);
+    const price = parseMoneyAmount(createForm.price);
     if (price == null) {
       toast("El precio debe ser mayor a 0", "error");
       return;
@@ -146,9 +151,9 @@ export default function MembershipsPage() {
     e.preventDefault();
     if (!editTarget) return;
 
-    const price = parsePositivePrice(editForm.price);
+    const price = parseMoneyAmount(editForm.price, true);
     if (price == null) {
-      toast("El precio debe ser mayor a 0", "error");
+      toast("El monto no puede ser negativo", "error");
       return;
     }
 
@@ -170,7 +175,7 @@ export default function MembershipsPage() {
         prev.map((m) => (m.id === updated.id ? updated : m)),
       );
       setEditTarget(null);
-      toast("Suscripción actualizada");
+      toast("Monto de pago actualizado");
     } catch (err) {
       toast(
         err instanceof ApiError ? err.message : "Error al actualizar",
@@ -209,7 +214,7 @@ export default function MembershipsPage() {
     e.preventDefault();
     if (!reactivateTarget) return;
 
-    const price = parsePositivePrice(reactivateForm.price);
+    const price = parseMoneyAmount(reactivateForm.price);
     if (price == null) {
       toast("El precio debe ser mayor a 0", "error");
       return;
@@ -241,7 +246,7 @@ export default function MembershipsPage() {
     e.preventDefault();
     if (!verifyTarget) return;
 
-    const price = parsePositivePrice(verifyForm.price);
+    const price = parseMoneyAmount(verifyForm.price);
     if (price == null) {
       toast("El precio debe ser mayor a 0", "error");
       return;
@@ -269,12 +274,47 @@ export default function MembershipsPage() {
     }
   }
 
-  function statusBadge(m: Membership) {
-    if (m.isCurrentlyActive) return <Badge tone="success">Activa</Badge>;
-    if (isPending(m)) return <Badge tone="warning">Pendiente de pago</Badge>;
-    if (m.cancelledAt) return <Badge tone="danger">Cancelada</Badge>;
-    return <Badge tone="warning">Expirada</Badge>;
+  async function onPurgeCancelled() {
+    setSaving(true);
+    try {
+      const result = await api.purgeCancelledMemberships();
+      setMemberships((prev) => prev.filter((m) => !m.cancelledAt));
+      setPurgeOpen(false);
+      toast(
+        result.deleted
+          ? `Se eliminaron ${result.deleted} membresías canceladas`
+          : "No había historial cancelado",
+      );
+    } catch (err) {
+      toast(
+        err instanceof ApiError
+          ? err.message
+          : "Error al limpiar el historial",
+        "error",
+      );
+    } finally {
+      setSaving(false);
+    }
   }
+
+  function statusBadge(m: Membership) {
+    if (isPending(m)) return <Badge tone="warning">Pendiente de pago</Badge>;
+    if (m.isCurrentlyActive || m.status === "active")
+      return <Badge tone="success">Activa</Badge>;
+    if (m.cancelledAt || m.status === "cancelled")
+      return <Badge tone="danger">Cancelada</Badge>;
+    return <Badge tone="neutral">Expirada</Badge>;
+  }
+
+  const cancelledCount = memberships.filter((m) => m.cancelledAt).length;
+  const visibleMemberships = memberships.filter((m) => {
+    if (filter === "active") return m.isCurrentlyActive;
+    if (filter === "pending") return isPending(m);
+    if (filter === "cancelled") return Boolean(m.cancelledAt);
+    if (filter === "expired")
+      return !m.isCurrentlyActive && !isPending(m) && !m.cancelledAt;
+    return true;
+  });
 
   if (loading) return <LoadingState />;
   if (error) return <ErrorState message={error} />;
@@ -283,14 +323,48 @@ export default function MembershipsPage() {
     <div>
       <PageHeader
         title="Suscripciones"
-        description="Las cuentas nuevas quedan pendientes hasta verificar el pago"
+        description="Una fila activa por dasher. El UUID bajo el nombre es el ID interno de usuario, no un token JWT."
         actions={
-          <Button onClick={() => setCreateOpen(true)}>Nueva suscripción</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => setPurgeOpen(true)}
+              disabled={cancelledCount === 0}
+            >
+              Limpiar canceladas ({cancelledCount})
+            </Button>
+            <Button onClick={() => setCreateOpen(true)}>Nueva suscripción</Button>
+          </div>
         }
       />
 
-      {memberships.length === 0 ? (
-        <EmptyState message="No hay suscripciones" />
+      <div className="mb-5 flex flex-wrap gap-2">
+        {(
+          [
+            ["all", "Todas"],
+            ["active", "Activas"],
+            ["pending", "Pendientes"],
+            ["cancelled", "Canceladas"],
+            ["expired", "Expiradas"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setFilter(id)}
+            className={`rounded-full px-3 py-1.5 text-sm transition ${
+              filter === id
+                ? "bg-zinc-950 text-white"
+                : "bg-white/80 text-zinc-600 ring-1 ring-zinc-200 hover:bg-white"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {visibleMemberships.length === 0 ? (
+        <EmptyState message="No hay suscripciones en este filtro" />
       ) : (
         <Table
           headers={[
@@ -303,25 +377,30 @@ export default function MembershipsPage() {
             "Acciones",
           ]}
         >
-          {memberships.map((m) => (
-            <tr key={m.id} className="hover:bg-slate-50">
+          {visibleMemberships.map((m) => (
+            <tr key={m.id} className="hover:bg-orange-50/40">
               <td className="px-4 py-3">
-                <div className="font-medium text-slate-900">
+                <div className="font-medium text-zinc-950">
                   {userDisplayName(m.user)}
                 </div>
-                <div className="text-xs text-slate-500">
-                  {m.user?.email ?? m.userId}
+                <div className="text-xs text-zinc-500">
+                  {membershipUserHint(m.user, m.userId)}
                 </div>
               </td>
               <td className="px-4 py-3">{statusBadge(m)}</td>
-              <td className="px-4 py-3 text-slate-600">
-                {formatMoney(m.price, m.currency)}
+              <td className="px-4 py-3">
+                <div className="font-medium text-zinc-950">
+                  {formatMoney(m.price, m.currency)}
+                </div>
+                {m.countsTowardRevenue === false ? (
+                  <div className="text-xs text-zinc-400">No suma al total</div>
+                ) : null}
               </td>
-              <td className="px-4 py-3 text-slate-600">
-                {formatDate(m.startsAt)}
+              <td className="px-4 py-3 text-zinc-600">
+                {isPending(m) ? "Pendiente" : formatDate(m.startsAt)}
               </td>
-              <td className="px-4 py-3 text-slate-600">
-                {formatDate(m.expiresAt)}
+              <td className="px-4 py-3 text-zinc-600">
+                {isPending(m) ? "—" : formatDate(m.expiresAt)}
               </td>
               <td className="px-4 py-3 text-slate-600">
                 {m.cancelledAt ? (
@@ -340,7 +419,7 @@ export default function MembershipsPage() {
               <td className="px-4 py-3">
                 <div className="flex flex-wrap gap-2">
                   <Button variant="secondary" onClick={() => openEdit(m)}>
-                    Editar
+                    Editar monto
                   </Button>
                   {m.isCurrentlyActive ? (
                     <Button
@@ -427,7 +506,7 @@ export default function MembershipsPage() {
 
       <Modal
         open={!!editTarget}
-        title="Editar suscripción"
+        title="Editar monto de pago"
         onClose={() => setEditTarget(null)}
         footer={
           <>
@@ -446,9 +525,9 @@ export default function MembershipsPage() {
             {editTarget?.user?.email ? ` (${editTarget.user.email})` : ""}
           </p>
           <Input
-            label="Precio (USD)"
+            label="Monto pagado (USD)"
             type="number"
-            min={0.01}
+            min={0}
             step="0.01"
             value={editForm.price}
             onChange={(e) =>
@@ -588,6 +667,28 @@ export default function MembershipsPage() {
             required
           />
         </form>
+      </Modal>
+
+      <Modal
+        open={purgeOpen}
+        title="Limpiar historial cancelado"
+        onClose={() => setPurgeOpen(false)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setPurgeOpen(false)}>
+              Volver
+            </Button>
+            <Button variant="danger" onClick={onPurgeCancelled} disabled={saving}>
+              {saving ? "Eliminando..." : "Eliminar canceladas"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-zinc-600">
+          Se van a borrar las membresías con estado cancelado ({cancelledCount}
+          ), incluidas las de <code>duplicate_same_user</code>. Las activas,
+          pendientes y expiradas no se tocan.
+        </p>
       </Modal>
     </div>
   );

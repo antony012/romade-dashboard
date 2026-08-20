@@ -165,6 +165,18 @@ export const api = {
     );
   },
 
+  purgeCancelledMemberships() {
+    return request<{ deleted: number }>("/api/v1/admin/memberships/cancelled", {
+      method: "DELETE",
+    });
+  },
+
+  resetEarnings() {
+    return request<{ cleared: number }>("/api/v1/admin/earnings/reset", {
+      method: "POST",
+    });
+  },
+
   listAdmins() {
     return request<Admin[]>("/api/v1/admin/admins");
   },

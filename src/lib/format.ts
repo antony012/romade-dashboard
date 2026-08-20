@@ -30,12 +30,22 @@ export function userDisplayName(user?: {
   dasherId?: string | null;
   sub?: string | null;
 } | null): string {
-  if (!user) return "—";
+  if (!user) return "Sesión sin perfil";
   const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
   if (name) return name;
   if (user.displayName) return user.displayName;
   if (user.email) return user.email;
   if (user.dasherId) return `Dasher ${user.dasherId}`;
   if (user.sub) return user.sub.slice(0, 18);
-  return "Sin nombre";
+  return "Sesión sin perfil";
+}
+
+export function membershipUserHint(user?: {
+  email?: string | null;
+  dasherId?: string | null;
+} | null, userId?: string | null): string {
+  if (user?.email) return user.email;
+  if (user?.dasherId) return `Dasher ${user.dasherId}`;
+  if (userId) return `ID interno ${userId.slice(0, 8)}…`;
+  return "Sin correo";
 }

@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { formatDate, formatMoney, userDisplayName } from "@/lib/format";
 import type { HomeResponse } from "@/lib/types";
+import { useToast } from "@/context/ToastContext";
+import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 import {
   Badge,
   Card,
@@ -15,11 +18,16 @@ import {
 import { Table } from "@/components/ui/Table";
 
 export default function HomePage() {
+  const { toast } = useToast();
   const [data, setData] = useState<HomeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+  function load() {
+    setLoading(true);
+    setError(null);
     api
       .getHome()
       .then(setData)
@@ -29,7 +37,28 @@ export default function HomePage() {
         );
       })
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    load();
   }, []);
+
+  async function onResetEarnings() {
+    setSaving(true);
+    try {
+      await api.resetEarnings();
+      setResetOpen(false);
+      toast("El total ganado quedó en $0.00");
+      load();
+    } catch (err) {
+      toast(
+        err instanceof ApiError ? err.message : "No se pudo borrar el total",
+        "error",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
 
   if (loading) return <LoadingState />;
   if (error) return <ErrorState message={error} />;
@@ -48,7 +77,12 @@ export default function HomePage() {
     <div>
       <PageHeader
         title="Inicio"
-        description="Resumen general de usuarios, suscripciones e ingresos"
+        description="Resumen de usuarios, suscripciones e ingresos. El total solo suma los montos que marques como cobro."
+        actions={
+          <Button variant="secondary" onClick={() => setResetOpen(true)}>
+            Borrar total ganado
+          </Button>
+        }
       />
 
       <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -195,6 +229,28 @@ export default function HomePage() {
           )}
         </section>
       </div>
+
+      <Modal
+        open={resetOpen}
+        title="Borrar total ganado"
+        onClose={() => setResetOpen(false)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setResetOpen(false)}>
+              Volver
+            </Button>
+            <Button variant="danger" onClick={onResetEarnings} disabled={saving}>
+              {saving ? "Borrando..." : "Dejar en $0.00"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-zinc-600">
+          El total, la semana y el mes quedan en cero. Las membresías no se
+          cancelan. Si después editas el monto de un cliente, ese cobro vuelve a
+          contar.
+        </p>
+      </Modal>
     </div>
   );
 }

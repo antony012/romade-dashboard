@@ -3,10 +3,12 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 const variants = {
-  primary: "bg-slate-900 text-white hover:bg-slate-800",
-  secondary: "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50",
-  danger: "bg-red-600 text-white hover:bg-red-500",
-  ghost: "bg-transparent text-slate-600 hover:bg-slate-100",
+  primary:
+    "bg-zinc-950 text-white hover:bg-zinc-800 shadow-sm shadow-zinc-950/10",
+  secondary:
+    "bg-white/80 text-zinc-800 border border-zinc-200 hover:bg-white backdrop-blur",
+  danger: "bg-red-600 text-white hover:bg-red-500 shadow-sm shadow-red-600/20",
+  ghost: "bg-transparent text-zinc-600 hover:bg-zinc-100",
 } as const;
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -25,7 +27,7 @@ export function Button({
     <button
       type="button"
       disabled={disabled}
-      className={`inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}
+      className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}
       {...props}
     >
       {children}

@@ -16,15 +16,20 @@ export function Sidebar() {
   const { admin, logout } = useAuth();
 
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-slate-900 text-slate-100">
-      <div className="border-b border-slate-700 px-5 py-5">
-        <p className="text-xs font-medium uppercase tracking-wider text-slate-400">
-          Admin
+    <aside className="flex w-64 shrink-0 flex-col border-r border-white/10 bg-zinc-950 text-zinc-100">
+      <div className="px-5 py-6">
+        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-orange-500 text-sm font-bold text-white shadow-lg shadow-orange-500/30">
+          R
+        </div>
+        <p className="mt-4 text-[11px] font-medium uppercase tracking-[0.2em] text-zinc-500">
+          RomaDe
         </p>
-        <h1 className="mt-1 text-lg font-semibold text-white">DoorDash</h1>
+        <h1 className="mt-1 text-lg font-semibold tracking-tight text-white">
+          Panel admin
+        </h1>
       </div>
 
-      <nav className="flex-1 space-y-1 px-3 py-4">
+      <nav className="flex-1 space-y-1 px-3">
         {links.map((link) => {
           const active =
             link.href === "/"
@@ -34,10 +39,10 @@ export function Sidebar() {
             <Link
               key={link.href}
               href={link.href}
-              className={`block rounded-md px-3 py-2 text-sm transition ${
+              className={`block rounded-xl px-3 py-2.5 text-sm transition ${
                 active
-                  ? "bg-slate-700 font-medium text-white"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                  ? "bg-white text-zinc-950 shadow-sm"
+                  : "text-zinc-400 hover:bg-white/5 hover:text-white"
               }`}
             >
               {link.label}
@@ -46,18 +51,22 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="border-t border-slate-700 px-4 py-4">
-        <p className="text-xs text-slate-500">Sesión</p>
-        <p className="mt-0.5 truncate text-sm font-medium text-slate-200">
-          {admin?.username ?? "Admin"}
-        </p>
-        <button
-          type="button"
-          onClick={logout}
-          className="mt-3 w-full rounded-md border border-slate-600 px-3 py-1.5 text-sm text-slate-200 transition hover:bg-slate-800"
-        >
-          Cerrar sesión
-        </button>
+      <div className="px-4 py-5">
+        <div className="rounded-2xl bg-white/5 px-4 py-4">
+          <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+            Sesión
+          </p>
+          <p className="mt-1 truncate text-sm font-medium text-zinc-100">
+            {admin?.username ?? "Admin"}
+          </p>
+          <button
+            type="button"
+            onClick={logout}
+            className="mt-3 w-full rounded-xl border border-white/10 px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/10 hover:text-white"
+          >
+            Cerrar sesión
+          </button>
+        </div>
       </div>
     </aside>
   );

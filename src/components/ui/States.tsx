@@ -10,10 +10,10 @@ export function Card({
   hint?: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-sm text-slate-500">{title}</p>
-      <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>
-      {hint ? <p className="mt-1 text-xs text-slate-400">{hint}</p> : null}
+    <div className="rounded-3xl border border-zinc-200/80 bg-white/80 p-5 shadow-sm shadow-zinc-950/5">
+      <p className="text-sm text-zinc-500">{title}</p>
+      <p className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950">{value}</p>
+      {hint ? <p className="mt-1 text-xs text-zinc-400">{hint}</p> : null}
     </div>
   );
 }
@@ -77,9 +77,9 @@ export function PageHeader({
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">{title}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-zinc-950">{title}</h1>
         {description ? (
-          <p className="mt-1 text-sm text-slate-500">{description}</p>
+          <p className="mt-1 text-sm text-zinc-500">{description}</p>
         ) : null}
       </div>
       {actions}

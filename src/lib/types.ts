@@ -41,6 +41,7 @@ export interface Membership {
   canVerifyPayment?: boolean;
   canCancel?: boolean;
   canReactivate?: boolean;
+  countsTowardRevenue?: boolean;
   price: number;
   currency: string;
   startsAt: string | null;

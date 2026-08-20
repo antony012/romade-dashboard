@@ -42,16 +42,19 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
-      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+    <div className="flex min-h-screen items-center justify-center px-4">
+      <div className="w-full max-w-md rounded-3xl border border-zinc-200/80 bg-white/90 p-8 shadow-xl shadow-zinc-950/5 backdrop-blur">
         <div className="mb-6">
-          <p className="text-xs font-medium uppercase tracking-wider text-slate-400">
-            Admin
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-500 text-sm font-bold text-white">
+            R
+          </div>
+          <p className="mt-4 text-xs font-medium uppercase tracking-[0.2em] text-zinc-400">
+            RomaDe
           </p>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-900">
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-950">
             Iniciar sesión
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-zinc-500">
             Accede al panel de administración
           </p>
         </div>
