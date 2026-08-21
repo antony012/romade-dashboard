@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { formatDate, userDisplayName } from "@/lib/format";
-import type { User } from "@/lib/types";
+import type { Membership, User } from "@/lib/types";
 import { useToast } from "@/context/ToastContext";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
@@ -17,8 +17,12 @@ import {
 } from "@/components/ui/States";
 import { Table } from "@/components/ui/Table";
 
+function activeMemberships(user: User): Membership[] {
+  return (user.memberships ?? []).filter((m) => m.isCurrentlyActive);
+}
+
 function hasActiveMembership(user: User): boolean {
-  return (user.memberships ?? []).some((m) => m.isCurrentlyActive);
+  return activeMemberships(user).length > 0;
 }
 
 function hasPendingMembership(user: User): boolean {
@@ -37,6 +41,7 @@ export default function UsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<User | null>(null);
   const [membershipUser, setMembershipUser] = useState<User | null>(null);
+  const [cancelUser, setCancelUser] = useState<User | null>(null);
   const [jwtUser, setJwtUser] = useState<User | null>(null);
   const [jwtToken, setJwtToken] = useState("");
   const [jwtLoading, setJwtLoading] = useState(false);
@@ -57,7 +62,9 @@ export default function UsersPage() {
     try {
       setUsers(await api.listUsers());
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Error al cargar usuarios");
+      setError(
+        err instanceof ApiError ? err.message : "Error al cargar usuarios",
+      );
     } finally {
       setLoading(false);
     }
@@ -176,6 +183,40 @@ export default function UsersPage() {
     }
   }
 
+  async function onCancelAccess() {
+    if (!cancelUser) return;
+
+    const memberships = activeMemberships(cancelUser);
+    if (!memberships.length) {
+      setCancelUser(null);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await Promise.all(
+        memberships.map((membership) =>
+          api.cancelMembership(membership.id, {
+            reason: "cancelled_for_non_payment",
+          }),
+        ),
+      );
+      const refreshed = await api.getUser(cancelUser.id);
+      setUsers((prev) =>
+        prev.map((user) => (user.id === refreshed.id ? refreshed : user)),
+      );
+      setCancelUser(null);
+      toast("Acceso cancelado");
+    } catch (err) {
+      toast(
+        err instanceof ApiError ? err.message : "No se pudo cancelar el acceso",
+        "error",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (loading) return <LoadingState />;
   if (error) return <ErrorState message={error} />;
 
@@ -207,8 +248,12 @@ export default function UsersPage() {
                 <td className="px-4 py-3 font-medium text-slate-900">
                   {userDisplayName(user)}
                 </td>
-                <td className="px-4 py-3 text-slate-600">{user.email ?? "—"}</td>
-                <td className="px-4 py-3 text-slate-600">{user.phone ?? "—"}</td>
+                <td className="px-4 py-3 text-slate-600">
+                  {user.email ?? "—"}
+                </td>
+                <td className="px-4 py-3 text-slate-600">
+                  {user.phone ?? "—"}
+                </td>
                 <td className="px-4 py-3">
                   {active ? (
                     <Badge tone="success">Activa</Badge>
@@ -226,14 +271,24 @@ export default function UsersPage() {
                     <Button variant="secondary" onClick={() => openEdit(user)}>
                       Editar
                     </Button>
-                    <Button variant="secondary" onClick={() => void openJwt(user)}>
+                    <Button
+                      variant="secondary"
+                      onClick={() => void openJwt(user)}
+                    >
                       Ver JWT
                     </Button>
                     {!active ? (
                       <Button onClick={() => openMembership(user)}>
                         Agregar membresía
                       </Button>
-                    ) : null}
+                    ) : (
+                      <Button
+                        variant="danger"
+                        onClick={() => setCancelUser(user)}
+                      >
+                        Cancelar acceso
+                      </Button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -294,10 +349,7 @@ export default function UsersPage() {
         onClose={() => setMembershipUser(null)}
         footer={
           <>
-            <Button
-              variant="secondary"
-              onClick={() => setMembershipUser(null)}
-            >
+            <Button variant="secondary" onClick={() => setMembershipUser(null)}>
               Cancelar
             </Button>
             <Button onClick={onCreateMembership} disabled={saving}>
@@ -308,8 +360,7 @@ export default function UsersPage() {
       >
         <form onSubmit={onCreateMembership} className="space-y-3">
           <p className="text-sm text-slate-600">
-            Membresía para{" "}
-            <strong>{userDisplayName(membershipUser)}</strong>
+            Membresía para <strong>{userDisplayName(membershipUser)}</strong>
             {membershipUser?.email ? ` (${membershipUser.email})` : ""}.
           </p>
           <Input
@@ -330,6 +381,32 @@ export default function UsersPage() {
             required
           />
         </form>
+      </Modal>
+
+      <Modal
+        open={!!cancelUser}
+        title="Cancelar acceso"
+        onClose={() => setCancelUser(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setCancelUser(null)}>
+              Volver
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => void onCancelAccess()}
+              disabled={saving}
+            >
+              {saving ? "Cancelando..." : "Cancelar acceso"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Se cancelarán todas las membresías activas de{" "}
+          <strong>{userDisplayName(cancelUser)}</strong>. Úsalo cuando el
+          repartidor no realice el pago.
+        </p>
       </Modal>
 
       <Modal
@@ -357,8 +434,7 @@ export default function UsersPage() {
         }
       >
         <p className="mb-3 text-sm text-slate-600">
-          Token de{" "}
-          <strong>{userDisplayName(jwtUser)}</strong>
+          Token de <strong>{userDisplayName(jwtUser)}</strong>
           {jwtUser?.email ? ` (${jwtUser.email})` : ""}. Solo visible para
           admin; no se escribe en logs.
         </p>
@@ -373,7 +449,9 @@ export default function UsersPage() {
             className="font-mono text-xs"
           />
         ) : (
-          <p className="text-sm text-slate-500">Este usuario no tiene JWT guardado.</p>
+          <p className="text-sm text-slate-500">
+            Este usuario no tiene JWT guardado.
+          </p>
         )}
       </Modal>
     </div>
