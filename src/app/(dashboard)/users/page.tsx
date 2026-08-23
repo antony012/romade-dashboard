@@ -42,6 +42,7 @@ export default function UsersPage() {
   const [editing, setEditing] = useState<User | null>(null);
   const [membershipUser, setMembershipUser] = useState<User | null>(null);
   const [cancelUser, setCancelUser] = useState<User | null>(null);
+  const [deleteUser, setDeleteUser] = useState<User | null>(null);
   const [jwtUser, setJwtUser] = useState<User | null>(null);
   const [jwtToken, setJwtToken] = useState("");
   const [jwtLoading, setJwtLoading] = useState(false);
@@ -217,6 +218,31 @@ export default function UsersPage() {
     }
   }
 
+  async function onDeleteUser() {
+    if (!deleteUser) return;
+    if (hasActiveMembership(deleteUser)) {
+      toast("Cancela el acceso antes de eliminar al usuario", "error");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await api.deleteUser(deleteUser.id);
+      setUsers((prev) => prev.filter((user) => user.id !== deleteUser.id));
+      setDeleteUser(null);
+      toast("Usuario eliminado");
+    } catch (err) {
+      toast(
+        err instanceof ApiError
+          ? err.message
+          : "No se pudo eliminar el usuario",
+        "error",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (loading) return <LoadingState />;
   if (error) return <ErrorState message={error} />;
 
@@ -278,9 +304,17 @@ export default function UsersPage() {
                       Ver JWT
                     </Button>
                     {!active ? (
-                      <Button onClick={() => openMembership(user)}>
-                        Agregar membresía
-                      </Button>
+                      <>
+                        <Button onClick={() => openMembership(user)}>
+                          Agregar membresía
+                        </Button>
+                        <Button
+                          variant="danger"
+                          onClick={() => setDeleteUser(user)}
+                        >
+                          Eliminar
+                        </Button>
+                      </>
                     ) : (
                       <Button
                         variant="danger"
@@ -406,6 +440,33 @@ export default function UsersPage() {
           Se cancelarán todas las membresías activas de{" "}
           <strong>{userDisplayName(cancelUser)}</strong>. Úsalo cuando el
           repartidor no realice el pago.
+        </p>
+      </Modal>
+
+      <Modal
+        open={!!deleteUser}
+        title="Eliminar usuario"
+        onClose={() => setDeleteUser(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeleteUser(null)}>
+              Volver
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => void onDeleteUser()}
+              disabled={saving}
+            >
+              {saving ? "Eliminando..." : "Eliminar"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Se eliminará permanentemente a{" "}
+          <strong>{userDisplayName(deleteUser)}</strong>
+          {deleteUser?.email ? ` (${deleteUser.email})` : ""}. Solo disponible
+          si no tiene membresía activa.
         </p>
       </Modal>
 

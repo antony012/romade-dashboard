@@ -51,7 +51,10 @@ async function request<T>(
 
   if (response.status === 401 && auth) {
     clearToken();
-    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+    if (
+      typeof window !== "undefined" &&
+      !window.location.pathname.startsWith("/login")
+    ) {
       window.location.href = "/login";
     }
     throw new ApiError("No autorizado", 401);
@@ -114,6 +117,12 @@ export const api = {
     });
   },
 
+  deleteUser(id: string) {
+    return request<{ deleted: true; id: string }>(`/api/v1/admin/users/${id}`, {
+      method: "DELETE",
+    });
+  },
+
   listMemberships() {
     return request<Membership[]>("/api/v1/admin/memberships");
   },
@@ -143,7 +152,10 @@ export const api = {
     });
   },
 
-  reactivateMembership(id: string, options?: { days?: number; price?: number }) {
+  reactivateMembership(
+    id: string,
+    options?: { days?: number; price?: number },
+  ) {
     const params = new URLSearchParams();
     if (options?.days != null) params.set("days", String(options.days));
     if (options?.price != null) params.set("price", String(options.price));
