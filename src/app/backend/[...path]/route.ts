@@ -3,6 +3,8 @@ import { getBackendOrigin } from "@/lib/backend-origin";
 
 const HOP_BY_HOP = new Set([
   "connection",
+  "content-encoding",
+  "content-length",
   "keep-alive",
   "proxy-authenticate",
   "proxy-authorization",
@@ -30,6 +32,7 @@ async function proxy(request: NextRequest, path: string[]) {
       headers.set(key, value);
     }
   });
+  headers.set("accept-encoding", "identity");
 
   const init: RequestInit = {
     method: request.method,
