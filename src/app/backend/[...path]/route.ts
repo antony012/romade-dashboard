@@ -41,7 +41,13 @@ async function proxy(request: NextRequest, path: string[]) {
     init.body = await request.arrayBuffer();
   }
 
-  const response = await fetch(target, init);
+  const response = await fetch(target, init).catch(() => null);
+  if (!response) {
+    return NextResponse.json(
+      { message: "No se pudo contactar el backend" },
+      { status: 502 },
+    );
+  }
   const responseHeaders = new Headers();
 
   response.headers.forEach((value, key) => {
