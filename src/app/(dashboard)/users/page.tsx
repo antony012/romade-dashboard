@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { formatDate, userDisplayName } from "@/lib/format";
 import type { Membership, User } from "@/lib/types";
@@ -16,6 +16,8 @@ import {
   PageHeader,
 } from "@/components/ui/States";
 import { Table } from "@/components/ui/Table";
+
+type UserFilter = "all" | "active" | "inactive" | "notes";
 
 function activeMemberships(user: User): Membership[] {
   return (user.memberships ?? []).filter((m) => m.isCurrentlyActive);
@@ -34,12 +36,132 @@ function hasPendingMembership(user: User): boolean {
   );
 }
 
+function UserActionsMenu({
+  user,
+  active,
+  onEdit,
+  onNotes,
+  onJwt,
+  onMembership,
+  onCancel,
+  onDelete,
+}: {
+  user: User;
+  active: boolean;
+  onEdit: (user: User) => void;
+  onNotes: (user: User) => void;
+  onJwt: (user: User) => void;
+  onMembership: (user: User) => void;
+  onCancel: (user: User) => void;
+  onDelete: (user: User) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onDocClick(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  const itemClass =
+    "block w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-100";
+
+  return (
+    <div ref={rootRef} className="relative inline-block text-left">
+      <Button
+        variant="secondary"
+        className="min-w-[7.5rem]"
+        onClick={() => setOpen((value) => !value)}
+      >
+        Acciones ▾
+      </Button>
+      {open ? (
+        <div className="absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-xl border border-zinc-200 bg-white py-1 shadow-lg shadow-zinc-950/10">
+          <button
+            type="button"
+            className={itemClass}
+            onClick={() => {
+              setOpen(false);
+              onEdit(user);
+            }}
+          >
+            Editar
+          </button>
+          <button
+            type="button"
+            className={itemClass}
+            onClick={() => {
+              setOpen(false);
+              onNotes(user);
+            }}
+          >
+            Observaciones
+          </button>
+          <button
+            type="button"
+            className={itemClass}
+            onClick={() => {
+              setOpen(false);
+              void onJwt(user);
+            }}
+          >
+            Ver JWT
+          </button>
+          {!active ? (
+            <>
+              <button
+                type="button"
+                className={itemClass}
+                onClick={() => {
+                  setOpen(false);
+                  onMembership(user);
+                }}
+              >
+                Agregar membresía
+              </button>
+              <button
+                type="button"
+                className={`${itemClass} text-red-600 hover:bg-red-50`}
+                onClick={() => {
+                  setOpen(false);
+                  onDelete(user);
+                }}
+              >
+                Eliminar
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className={`${itemClass} text-red-600 hover:bg-red-50`}
+              onClick={() => {
+                setOpen(false);
+                onCancel(user);
+              }}
+            >
+              Cancelar acceso
+            </button>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function UsersPage() {
   const { toast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<UserFilter>("all");
   const [editing, setEditing] = useState<User | null>(null);
+  const [notesUser, setNotesUser] = useState<User | null>(null);
+  const [notesDraft, setNotesDraft] = useState("");
   const [membershipUser, setMembershipUser] = useState<User | null>(null);
   const [cancelUser, setCancelUser] = useState<User | null>(null);
   const [deleteUser, setDeleteUser] = useState<User | null>(null);
@@ -75,6 +197,16 @@ export default function UsersPage() {
     void load();
   }, []);
 
+  const visibleUsers = useMemo(() => {
+    return users.filter((user) => {
+      const active = hasActiveMembership(user);
+      if (filter === "active") return active;
+      if (filter === "inactive") return !active;
+      if (filter === "notes") return Boolean(user.notes?.trim());
+      return true;
+    });
+  }, [users, filter]);
+
   function openEdit(user: User) {
     setEditing(user);
     setForm({
@@ -84,6 +216,11 @@ export default function UsersPage() {
       email: user.email ?? "",
       notes: user.notes ?? "",
     });
+  }
+
+  function openNotes(user: User) {
+    setNotesUser(user);
+    setNotesDraft(user.notes ?? "");
   }
 
   function openMembership(user: User) {
@@ -130,7 +267,7 @@ export default function UsersPage() {
         lastName: form.lastName || undefined,
         phone: form.phone || undefined,
         email: form.email || undefined,
-        notes: form.notes || undefined,
+        notes: form.notes,
       });
       setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
       setEditing(null);
@@ -138,6 +275,29 @@ export default function UsersPage() {
     } catch (err) {
       toast(
         err instanceof ApiError ? err.message : "Error al actualizar",
+        "error",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onSaveNotes(e: FormEvent) {
+    e.preventDefault();
+    if (!notesUser) return;
+    setSaving(true);
+    try {
+      const updated = await api.updateUser(notesUser.id, {
+        notes: notesDraft,
+      });
+      setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+      setNotesUser(null);
+      toast("Observaciones guardadas");
+    } catch (err) {
+      toast(
+        err instanceof ApiError
+          ? err.message
+          : "No se pudieron guardar las observaciones",
         "error",
       );
     } finally {
@@ -250,11 +410,30 @@ export default function UsersPage() {
     <div>
       <PageHeader
         title="Usuarios"
-        description="Listado, edición y membresías"
+        description="Listado, observaciones y membresías"
       />
 
-      {users.length === 0 ? (
-        <EmptyState message="No hay usuarios" />
+      <div className="mb-5 flex flex-wrap items-end gap-3">
+        <label className="block min-w-[14rem] space-y-1.5">
+          <span className="text-sm font-medium text-slate-700">Filtrar</span>
+          <select
+            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as UserFilter)}
+          >
+            <option value="all">Todos</option>
+            <option value="active">Con membresía activa</option>
+            <option value="inactive">Sin membresía activa</option>
+            <option value="notes">Con observaciones</option>
+          </select>
+        </label>
+        <p className="pb-2 text-sm text-slate-500">
+          {visibleUsers.length} de {users.length} usuarios
+        </p>
+      </div>
+
+      {visibleUsers.length === 0 ? (
+        <EmptyState message="No hay usuarios en este filtro" />
       ) : (
         <Table
           headers={[
@@ -262,11 +441,12 @@ export default function UsersPage() {
             "Email",
             "Teléfono",
             "Membresía",
+            "Observaciones",
             "Creado",
             "Acciones",
           ]}
         >
-          {users.map((user) => {
+          {visibleUsers.map((user) => {
             const active = hasActiveMembership(user);
             const pending = hasPendingMembership(user);
             return (
@@ -289,41 +469,40 @@ export default function UsersPage() {
                     <Badge tone="neutral">Sin activa</Badge>
                   )}
                 </td>
+                <td className="max-w-[16rem] px-4 py-3 text-slate-600">
+                  {user.notes?.trim() ? (
+                    <button
+                      type="button"
+                      className="line-clamp-2 text-left text-sm hover:text-zinc-950"
+                      onClick={() => openNotes(user)}
+                      title={user.notes}
+                    >
+                      {user.notes}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="text-sm text-slate-400 hover:text-zinc-700"
+                      onClick={() => openNotes(user)}
+                    >
+                      Añadir
+                    </button>
+                  )}
+                </td>
                 <td className="px-4 py-3 text-slate-600">
                   {formatDate(user.createdAt)}
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="secondary" onClick={() => openEdit(user)}>
-                      Editar
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => void openJwt(user)}
-                    >
-                      Ver JWT
-                    </Button>
-                    {!active ? (
-                      <>
-                        <Button onClick={() => openMembership(user)}>
-                          Agregar membresía
-                        </Button>
-                        <Button
-                          variant="danger"
-                          onClick={() => setDeleteUser(user)}
-                        >
-                          Eliminar
-                        </Button>
-                      </>
-                    ) : (
-                      <Button
-                        variant="danger"
-                        onClick={() => setCancelUser(user)}
-                      >
-                        Cancelar acceso
-                      </Button>
-                    )}
-                  </div>
+                  <UserActionsMenu
+                    user={user}
+                    active={active}
+                    onEdit={openEdit}
+                    onNotes={openNotes}
+                    onJwt={openJwt}
+                    onMembership={openMembership}
+                    onCancel={setCancelUser}
+                    onDelete={setDeleteUser}
+                  />
                 </td>
               </tr>
             );
@@ -369,10 +548,41 @@ export default function UsersPage() {
             onChange={(e) => setForm({ ...form, phone: e.target.value })}
           />
           <Textarea
-            label="Notas"
-            rows={3}
+            label="Observaciones"
+            rows={4}
             value={form.notes}
             onChange={(e) => setForm({ ...form, notes: e.target.value })}
+            placeholder="Pago pendiente, WhatsApp, etc."
+          />
+        </form>
+      </Modal>
+
+      <Modal
+        open={!!notesUser}
+        title="Observaciones"
+        onClose={() => setNotesUser(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setNotesUser(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={onSaveNotes} disabled={saving}>
+              {saving ? "Guardando..." : "Guardar"}
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={onSaveNotes} className="space-y-3">
+          <p className="text-sm text-slate-600">
+            Notas internas de <strong>{userDisplayName(notesUser)}</strong>
+            {notesUser?.email ? ` (${notesUser.email})` : ""}.
+          </p>
+          <Textarea
+            label="Observaciones"
+            rows={5}
+            value={notesDraft}
+            onChange={(e) => setNotesDraft(e.target.value)}
+            placeholder="Ej.: pagó por Zelle, renovar el viernes…"
           />
         </form>
       </Modal>
