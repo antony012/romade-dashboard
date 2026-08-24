@@ -14,8 +14,7 @@ import type {
   User,
 } from "./types";
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "https://latidos-ve.vercel.app";
+const API_URL = "/backend";
 
 export class ApiError extends Error {
   status: number;
@@ -70,7 +69,7 @@ async function request<T>(
         message = data.message;
       }
     } catch {
-      // ignore parse errors
+      /* ignore */
     }
     throw new ApiError(message, response.status);
   }
