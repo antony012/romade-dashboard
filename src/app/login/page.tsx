@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { ApiError } from "@/lib/api";
@@ -43,49 +44,59 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-3xl border border-zinc-200/80 bg-white/90 p-8 shadow-xl shadow-zinc-950/5 backdrop-blur">
-        <div className="mb-6">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-500 text-sm font-bold text-white">
-            R
+      <div className="w-full max-w-md overflow-hidden rounded-[2rem] border border-zinc-200/80 bg-white/90 shadow-2xl shadow-amber-900/10 backdrop-blur">
+        <div className="relative h-40 overflow-hidden bg-zinc-900">
+          <Image
+            src="/logo-blue.png"
+            alt="Blue"
+            fill
+            sizes="28rem"
+            className="object-cover opacity-90"
+            priority
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/80 via-zinc-950/20 to-transparent" />
+          <div className="absolute bottom-4 left-5">
+            <p className="text-xs font-medium uppercase tracking-[0.22em] text-amber-200/90">
+              RomaDe
+            </p>
+            <h1 className="text-2xl font-semibold tracking-tight text-white">
+              Panel Blue
+            </h1>
           </div>
-          <p className="mt-4 text-xs font-medium uppercase tracking-[0.2em] text-zinc-400">
-            RomaDe
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-950">
-            Iniciar sesión
-          </h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            Accede al panel de administración
-          </p>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-4">
-          <Input
-            label="Usuario"
-            name="username"
-            autoComplete="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            required
-          />
-          <Input
-            label="Contraseña"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={submitting}
-            variant="primary"
-          >
-            {submitting ? "Entrando..." : "Entrar"}
-          </Button>
-        </form>
+        <div className="p-8">
+          <p className="mb-5 text-sm text-zinc-500">
+            Accede al panel de administración
+          </p>
+          <form onSubmit={onSubmit} className="space-y-4">
+            <Input
+              label="Usuario"
+              name="username"
+              autoComplete="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+            />
+            <Input
+              label="Contraseña"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={submitting}
+              variant="primary"
+            >
+              {submitting ? "Entrando..." : "Entrar"}
+            </Button>
+          </form>
+        </div>
       </div>
     </div>
   );

@@ -14,8 +14,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RomaDe Admin",
+  title: "RomaDe Admin · Blue",
   description: "Panel de administración de RomaDe",
+  icons: {
+    icon: "/logo-blue.png",
+    apple: "/logo-blue.png",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

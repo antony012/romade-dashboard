@@ -43,8 +43,10 @@ function isPruebaNote(notes?: string | null): boolean {
 function UserActionsMenu({
   user,
   active,
+  isPrueba,
   onEdit,
   onNotes,
+  onPrueba,
   onJwt,
   onMembership,
   onCancel,
@@ -52,8 +54,10 @@ function UserActionsMenu({
 }: {
   user: User;
   active: boolean;
+  isPrueba: boolean;
   onEdit: (user: User) => void;
   onNotes: (user: User) => void;
+  onPrueba: (user: User) => void;
   onJwt: (user: User) => void;
   onMembership: (user: User) => void;
   onCancel: (user: User) => void;
@@ -85,7 +89,7 @@ function UserActionsMenu({
         Acciones ▾
       </Button>
       {open ? (
-        <div className="absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-xl border border-zinc-200 bg-white py-1 shadow-lg shadow-zinc-950/10">
+        <div className="absolute right-0 z-20 mt-1 w-52 overflow-hidden rounded-2xl border border-zinc-200 bg-white py-1 shadow-xl shadow-zinc-950/10">
           <button
             type="button"
             className={itemClass}
@@ -105,6 +109,20 @@ function UserActionsMenu({
             }}
           >
             Observaciones
+          </button>
+          <button
+            type="button"
+            className={`${itemClass} ${
+              isPrueba
+                ? "bg-amber-50 font-medium text-amber-800 hover:bg-amber-100"
+                : "text-amber-700 hover:bg-amber-50"
+            }`}
+            onClick={() => {
+              setOpen(false);
+              void onPrueba(user);
+            }}
+          >
+            {isPrueba ? "Quitar Prueba" : "Marcar Prueba"}
           </button>
           <button
             type="button"
@@ -309,6 +327,36 @@ export default function UsersPage() {
     }
   }
 
+  async function onTogglePrueba(user: User) {
+    const current = user.notes?.trim() ?? "";
+    const nextNotes = isPruebaNote(current)
+      ? current
+          .replace(/\bprueba\b/gi, "")
+          .replace(/\s{2,}/g, " ")
+          .trim()
+      : current
+        ? `${current} · Prueba`
+        : "Prueba";
+
+    setSaving(true);
+    try {
+      const updated = await api.updateUser(user.id, { notes: nextNotes });
+      setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+      toast(
+        isPruebaNote(nextNotes)
+          ? "Marcado como Prueba"
+          : "Se quitó la marca Prueba",
+      );
+    } catch (err) {
+      toast(
+        err instanceof ApiError ? err.message : "No se pudo actualizar Prueba",
+        "error",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function onCreateMembership(e: FormEvent) {
     e.preventDefault();
     if (!membershipUser) return;
@@ -414,14 +462,14 @@ export default function UsersPage() {
     <div>
       <PageHeader
         title="Usuarios"
-        description="Listado, observaciones y membresías"
+        description="Observaciones, filtros y membresías en un solo lugar"
       />
 
-      <div className="mb-5 flex flex-wrap items-end gap-3">
-        <label className="block min-w-[14rem] space-y-1.5">
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3 rounded-3xl border border-zinc-200/80 bg-white/70 p-4 shadow-sm shadow-zinc-950/5 backdrop-blur">
+        <label className="block min-w-[16rem] space-y-1.5">
           <span className="text-sm font-medium text-slate-700">Filtrar</span>
           <select
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400"
             value={filter}
             onChange={(e) => setFilter(e.target.value as UserFilter)}
           >
@@ -431,9 +479,9 @@ export default function UsersPage() {
             <option value="notes">Con observaciones</option>
           </select>
         </label>
-        <p className="pb-2 text-sm text-slate-500">
+        <div className="rounded-full bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 ring-1 ring-amber-200">
           {visibleUsers.length} de {users.length} usuarios
-        </p>
+        </div>
       </div>
 
       {visibleUsers.length === 0 ? (
@@ -473,13 +521,16 @@ export default function UsersPage() {
                   {user.phone ?? "—"}
                 </td>
                 <td className="px-4 py-3">
-                  {active ? (
-                    <Badge tone="success">Activa</Badge>
-                  ) : pending ? (
-                    <Badge tone="warning">Pendiente de pago</Badge>
-                  ) : (
-                    <Badge tone="neutral">Sin activa</Badge>
-                  )}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {active ? (
+                      <Badge tone="success">Activa</Badge>
+                    ) : pending ? (
+                      <Badge tone="warning">Pendiente de pago</Badge>
+                    ) : (
+                      <Badge tone="neutral">Sin activa</Badge>
+                    )}
+                    {prueba ? <Badge tone="warning">Prueba</Badge> : null}
+                  </div>
                 </td>
                 <td className="max-w-[16rem] px-4 py-3 text-slate-600">
                   {user.notes?.trim() ? (
@@ -508,8 +559,10 @@ export default function UsersPage() {
                   <UserActionsMenu
                     user={user}
                     active={active}
+                    isPrueba={prueba}
                     onEdit={openEdit}
                     onNotes={openNotes}
+                    onPrueba={onTogglePrueba}
                     onJwt={openJwt}
                     onMembership={openMembership}
                     onCancel={setCancelUser}

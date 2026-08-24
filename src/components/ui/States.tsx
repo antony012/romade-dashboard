@@ -12,7 +12,9 @@ export function Card({
   return (
     <div className="rounded-3xl border border-zinc-200/80 bg-white/80 p-5 shadow-sm shadow-zinc-950/5">
       <p className="text-sm text-zinc-500">{title}</p>
-      <p className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950">{value}</p>
+      <p className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950">
+        {value}
+      </p>
       {hint ? <p className="mt-1 text-xs text-zinc-400">{hint}</p> : null}
     </div>
   );
@@ -75,11 +77,15 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+    <div className="mb-7 flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-950">{title}</h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-zinc-950">
+          {title}
+        </h1>
         {description ? (
-          <p className="mt-1 text-sm text-zinc-500">{description}</p>
+          <p className="mt-1.5 max-w-2xl text-sm text-zinc-500">
+            {description}
+          </p>
         ) : null}
       </div>
       {actions}
