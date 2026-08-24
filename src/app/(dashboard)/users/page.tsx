@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/States";
 import { Table } from "@/components/ui/Table";
 
-type UserFilter = "all" | "active" | "inactive" | "notes";
+type UserFilter = "all" | "active" | "inactive" | "notes" | "verified";
 
 function activeMemberships(user: User): Membership[] {
   return (user.memberships ?? []).filter((m) => m.isCurrentlyActive);
@@ -40,13 +40,28 @@ function isPruebaNote(notes?: string | null): boolean {
   return /\bprueba\b/i.test(notes?.trim() ?? "");
 }
 
+function CrownIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M3.5 17.5 5 8l4.2 4.2L12 4.5l2.8 7.7L19 8l1.5 9.5H3.5Zm1.2 1.5h14.6v1.8H4.7V19Z" />
+    </svg>
+  );
+}
+
 function UserActionsMenu({
   user,
   active,
   isPrueba,
+  isVerified,
   onEdit,
   onNotes,
   onPrueba,
+  onVerify,
   onJwt,
   onMembership,
   onCancel,
@@ -55,9 +70,11 @@ function UserActionsMenu({
   user: User;
   active: boolean;
   isPrueba: boolean;
+  isVerified: boolean;
   onEdit: (user: User) => void;
   onNotes: (user: User) => void;
   onPrueba: (user: User) => void;
+  onVerify: (user: User) => void;
   onJwt: (user: User) => void;
   onMembership: (user: User) => void;
   onCancel: (user: User) => void;
@@ -89,7 +106,7 @@ function UserActionsMenu({
         Acciones ▾
       </Button>
       {open ? (
-        <div className="absolute right-0 z-20 mt-1 w-52 overflow-hidden rounded-2xl border border-zinc-200 bg-white py-1 shadow-xl shadow-zinc-950/10">
+        <div className="absolute right-0 z-20 mt-1 w-56 overflow-hidden rounded-2xl border border-zinc-200 bg-white py-1 shadow-xl shadow-zinc-950/10">
           <button
             type="button"
             className={itemClass}
@@ -109,6 +126,23 @@ function UserActionsMenu({
             }}
           >
             Observaciones
+          </button>
+          <button
+            type="button"
+            className={`${itemClass} ${
+              isVerified
+                ? "bg-amber-50 font-medium text-amber-800 hover:bg-amber-100"
+                : "text-amber-700 hover:bg-amber-50"
+            }`}
+            onClick={() => {
+              setOpen(false);
+              void onVerify(user);
+            }}
+          >
+            <span className="inline-flex items-center gap-2">
+              <CrownIcon className="h-3.5 w-3.5 text-amber-500" />
+              {isVerified ? "Quitar corona" : "Verificar (corona)"}
+            </span>
           </button>
           <button
             type="button"
@@ -225,6 +259,7 @@ export default function UsersPage() {
       if (filter === "active") return active;
       if (filter === "inactive") return !active;
       if (filter === "notes") return Boolean(user.notes?.trim());
+      if (filter === "verified") return user.verified === true;
       return true;
     });
   }, [users, filter]);
@@ -357,6 +392,25 @@ export default function UsersPage() {
     }
   }
 
+  async function onToggleVerified(user: User) {
+    const next = !(user.verified === true);
+    setSaving(true);
+    try {
+      const updated = await api.updateUser(user.id, { verified: next });
+      setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+      toast(next ? "Usuario verificado con corona" : "Corona quitada");
+    } catch (err) {
+      toast(
+        err instanceof ApiError
+          ? err.message
+          : "No se pudo actualizar la verificación",
+        "error",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function onCreateMembership(e: FormEvent) {
     e.preventDefault();
     if (!membershipUser) return;
@@ -477,6 +531,7 @@ export default function UsersPage() {
             <option value="active">Con membresía activa</option>
             <option value="inactive">Sin membresía activa</option>
             <option value="notes">Con observaciones</option>
+            <option value="verified">Verificados (corona)</option>
           </select>
         </label>
         <div className="rounded-full bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 ring-1 ring-amber-200">
@@ -502,6 +557,7 @@ export default function UsersPage() {
             const active = hasActiveMembership(user);
             const pending = hasPendingMembership(user);
             const prueba = isPruebaNote(user.notes);
+            const verified = user.verified === true;
             return (
               <tr
                 key={user.id}
@@ -512,7 +568,17 @@ export default function UsersPage() {
                 }
               >
                 <td className="px-4 py-3 font-medium text-slate-900">
-                  {userDisplayName(user)}
+                  <span className="inline-flex items-center gap-2">
+                    {verified ? (
+                      <span
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-amber-100 text-amber-500 ring-1 ring-amber-300"
+                        title="Usuario verificado"
+                      >
+                        <CrownIcon className="h-4 w-4" />
+                      </span>
+                    ) : null}
+                    <span>{userDisplayName(user)}</span>
+                  </span>
                 </td>
                 <td className="px-4 py-3 text-slate-600">
                   {user.email ?? "—"}
@@ -560,9 +626,11 @@ export default function UsersPage() {
                     user={user}
                     active={active}
                     isPrueba={prueba}
+                    isVerified={verified}
                     onEdit={openEdit}
                     onNotes={openNotes}
                     onPrueba={onTogglePrueba}
+                    onVerify={onToggleVerified}
                     onJwt={openJwt}
                     onMembership={openMembership}
                     onCancel={setCancelUser}

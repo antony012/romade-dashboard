@@ -62,6 +62,7 @@ export interface User {
   displayName?: string | null;
   phone: string | null;
   notes: string | null;
+  verified?: boolean;
   dasherId?: string | null;
   sub: string | null;
   iss: string | null;
@@ -118,6 +119,7 @@ export interface UpdateUserPayload {
   phone?: string;
   email?: string;
   notes?: string;
+  verified?: boolean;
 }
 
 export interface CreateMembershipPayload {
