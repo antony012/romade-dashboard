@@ -36,6 +36,10 @@ function hasPendingMembership(user: User): boolean {
   );
 }
 
+function isPruebaNote(notes?: string | null): boolean {
+  return /\bprueba\b/i.test(notes?.trim() ?? "");
+}
+
 function UserActionsMenu({
   user,
   active,
@@ -449,8 +453,16 @@ export default function UsersPage() {
           {visibleUsers.map((user) => {
             const active = hasActiveMembership(user);
             const pending = hasPendingMembership(user);
+            const prueba = isPruebaNote(user.notes);
             return (
-              <tr key={user.id} className="hover:bg-slate-50">
+              <tr
+                key={user.id}
+                className={
+                  prueba
+                    ? "bg-amber-100 hover:bg-amber-200/80"
+                    : "hover:bg-slate-50"
+                }
+              >
                 <td className="px-4 py-3 font-medium text-slate-900">
                   {userDisplayName(user)}
                 </td>
