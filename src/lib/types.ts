@@ -135,6 +135,8 @@ export interface CreateReferrerPayload {
   phone?: string;
   email?: string;
 }
+
+export interface CreateMembershipPayload {
   userId: string;
   days?: number;
   price?: number;
