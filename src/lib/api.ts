@@ -5,6 +5,7 @@ import type {
   CancelMembershipPayload,
   CreateAdminPayload,
   CreateMembershipPayload,
+  CreateReferrerPayload,
   HomeResponse,
   LoginResponse,
   Membership,
@@ -119,6 +120,13 @@ export const api = {
   deleteUser(id: string) {
     return request<{ deleted: true; id: string }>(`/api/v1/admin/users/${id}`, {
       method: "DELETE",
+    });
+  },
+
+  createReferrer(payload: CreateReferrerPayload) {
+    return request<User>("/api/v1/admin/users/referrers", {
+      method: "POST",
+      body: JSON.stringify(payload),
     });
   },
 

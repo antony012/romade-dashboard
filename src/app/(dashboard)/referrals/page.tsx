@@ -33,6 +33,13 @@ export default function ReferralsPage() {
   const [childQuery, setChildQuery] = useState("");
   const [assignChild, setAssignChild] = useState<User | null>(null);
   const [assignParentId, setAssignParentId] = useState("");
+  const [creatingReferrer, setCreatingReferrer] = useState(false);
+  const [newReferrer, setNewReferrer] = useState({
+    firstName: "",
+    lastName: "",
+    phone: "",
+    email: "",
+  });
   const [saving, setSaving] = useState(false);
 
   async function load() {
@@ -120,15 +127,39 @@ export default function ReferralsPage() {
 
   async function onAssignUnassigned(e: FormEvent) {
     e.preventDefault();
-    if (!assignChild || !assignParentId) return;
+    if (!assignChild) return;
     setSaving(true);
     try {
-      await api.updateUser(assignChild.id, { referredById: assignParentId });
+      let parentId = assignParentId;
+      if (creatingReferrer) {
+        if (!newReferrer.firstName.trim()) {
+          toast("Escribe el nombre del referente", "error");
+          setSaving(false);
+          return;
+        }
+        const created = await api.createReferrer({
+          firstName: newReferrer.firstName.trim(),
+          lastName: newReferrer.lastName.trim() || undefined,
+          phone: newReferrer.phone.trim() || undefined,
+          email: newReferrer.email.trim() || undefined,
+        });
+        parentId = created.id;
+      }
+      if (!parentId) {
+        toast("Elige o crea un referente", "error");
+        setSaving(false);
+        return;
+      }
+      await api.updateUser(assignChild.id, { referredById: parentId });
       setUsers(await api.listUsers());
-      setOpenId(assignParentId);
+      setOpenId(parentId);
       setAssignChild(null);
       setAssignParentId("");
-      toast("Referente asignado");
+      toast(
+        creatingReferrer
+          ? "Referente creado y asignado"
+          : "Referente asignado",
+      );
     } catch (err) {
       toast(
         err instanceof ApiError
@@ -349,6 +380,13 @@ export default function ReferralsPage() {
                   onClick={() => {
                     setAssignChild(user);
                     setAssignParentId("");
+                    setCreatingReferrer(false);
+                    setNewReferrer({
+                      firstName: "",
+                      lastName: "",
+                      phone: "",
+                      email: "",
+                    });
                   }}
                 >
                   Asignar
@@ -419,9 +457,11 @@ export default function ReferralsPage() {
             </Button>
             <Button
               onClick={onAssignUnassigned}
-              disabled={saving || !assignParentId}
+              disabled={
+                saving || (!creatingReferrer && !assignParentId)
+              }
             >
-              {saving ? "Guardando..." : "Asignar"}
+              {saving ? "Guardando..." : creatingReferrer ? "Crear y asignar" : "Asignar"}
             </Button>
           </>
         }
@@ -431,31 +471,91 @@ export default function ReferralsPage() {
             ¿Quién refirió a{" "}
             <strong>{userDisplayName(assignChild)}</strong>?
           </p>
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium text-slate-700">
-              Referente
-            </span>
-            <select
-              className="min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400"
-              value={assignParentId}
-              onChange={(e) => setAssignParentId(e.target.value)}
-              required
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              className={`min-h-11 rounded-xl border px-3 py-2 text-sm font-medium ${
+                !creatingReferrer
+                  ? "border-zinc-900 bg-zinc-950 text-white"
+                  : "border-zinc-200 bg-white text-zinc-700"
+              }`}
+              onClick={() => setCreatingReferrer(false)}
             >
-              <option value="">Seleccionar persona</option>
-              {users
-                .filter((user) => {
-                  if (!assignChild) return false;
-                  if (user.id === assignChild.id) return false;
-                  return !descendantIds(users, assignChild.id).has(user.id);
-                })
-                .map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {userDisplayName(user)}
-                    {user.email ? ` (${user.email})` : ""}
-                  </option>
-                ))}
-            </select>
-          </label>
+              De la lista
+            </button>
+            <button
+              type="button"
+              className={`min-h-11 rounded-xl border px-3 py-2 text-sm font-medium ${
+                creatingReferrer
+                  ? "border-zinc-900 bg-zinc-950 text-white"
+                  : "border-zinc-200 bg-white text-zinc-700"
+              }`}
+              onClick={() => setCreatingReferrer(true)}
+            >
+              Crear nuevo
+            </button>
+          </div>
+          {creatingReferrer ? (
+            <>
+              <Input
+                label="Nombre"
+                value={newReferrer.firstName}
+                onChange={(e) =>
+                  setNewReferrer({ ...newReferrer, firstName: e.target.value })
+                }
+                required
+              />
+              <Input
+                label="Apellido"
+                value={newReferrer.lastName}
+                onChange={(e) =>
+                  setNewReferrer({ ...newReferrer, lastName: e.target.value })
+                }
+              />
+              <Input
+                label="Teléfono"
+                value={newReferrer.phone}
+                onChange={(e) =>
+                  setNewReferrer({ ...newReferrer, phone: e.target.value })
+                }
+              />
+              <Input
+                label="Email"
+                type="email"
+                value={newReferrer.email}
+                onChange={(e) =>
+                  setNewReferrer({ ...newReferrer, email: e.target.value })
+                }
+              />
+            </>
+          ) : (
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium text-slate-700">
+                Referente
+              </span>
+              <select
+                className="min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400"
+                value={assignParentId}
+                onChange={(e) => setAssignParentId(e.target.value)}
+                required={!creatingReferrer}
+              >
+                <option value="">Seleccionar persona</option>
+                {users
+                  .filter((user) => {
+                    if (!assignChild) return false;
+                    if (user.id === assignChild.id) return false;
+                    return !descendantIds(users, assignChild.id).has(user.id);
+                  })
+                  .map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {userDisplayName(user)}
+                      {user.email ? ` (${user.email})` : ""}
+                      {user.isReferrerProfile ? " · perfil" : ""}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          )}
         </form>
       </Modal>
     </div>

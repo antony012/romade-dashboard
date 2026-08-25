@@ -64,6 +64,7 @@ export interface User {
   notes: string | null;
   verified?: boolean;
   blacklisted?: boolean;
+  isReferrerProfile?: boolean;
   referredById?: string | null;
   referredBy?: MembershipUser | null;
   referralCount?: number;
@@ -128,7 +129,12 @@ export interface UpdateUserPayload {
   referredById?: string | null;
 }
 
-export interface CreateMembershipPayload {
+export interface CreateReferrerPayload {
+  firstName: string;
+  lastName?: string;
+  phone?: string;
+  email?: string;
+}
   userId: string;
   days?: number;
   price?: number;

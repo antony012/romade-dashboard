@@ -287,6 +287,13 @@ export default function UsersPage() {
   const [referUser, setReferUser] = useState<User | null>(null);
   const [referrerId, setReferrerId] = useState("");
   const [referrerQuery, setReferrerQuery] = useState("");
+  const [creatingReferrer, setCreatingReferrer] = useState(false);
+  const [newReferrer, setNewReferrer] = useState({
+    firstName: "",
+    lastName: "",
+    phone: "",
+    email: "",
+  });
   const [jwtUser, setJwtUser] = useState<User | null>(null);
   const [jwtToken, setJwtToken] = useState("");
   const [jwtLoading, setJwtLoading] = useState(false);
@@ -380,6 +387,8 @@ export default function UsersPage() {
     setReferUser(user);
     setReferrerId(user.referredById ?? "");
     setReferrerQuery("");
+    setCreatingReferrer(false);
+    setNewReferrer({ firstName: "", lastName: "", phone: "", email: "" });
   }
 
   function openMembership(user: User) {
@@ -469,14 +478,31 @@ export default function UsersPage() {
     if (!referUser) return;
     setSaving(true);
     try {
+      let nextReferrerId = referrerId || null;
+      if (creatingReferrer) {
+        if (!newReferrer.firstName.trim()) {
+          toast("Escribe el nombre del referente", "error");
+          setSaving(false);
+          return;
+        }
+        const created = await api.createReferrer({
+          firstName: newReferrer.firstName.trim(),
+          lastName: newReferrer.lastName.trim() || undefined,
+          phone: newReferrer.phone.trim() || undefined,
+          email: newReferrer.email.trim() || undefined,
+        });
+        nextReferrerId = created.id;
+      }
       await api.updateUser(referUser.id, {
-        referredById: referrerId || null,
+        referredById: nextReferrerId,
       });
       setUsers(await api.listUsers());
       setReferUser(null);
       toast(
-        referrerId
-          ? "Referente asignado"
+        nextReferrerId
+          ? creatingReferrer
+            ? "Referente creado y asignado"
+            : "Referente asignado"
           : "Se quitó el referente de este usuario",
       );
     } catch (err) {
@@ -769,6 +795,9 @@ export default function UsersPage() {
                     {blacklisted ? (
                       <Badge tone="danger">Lista negra</Badge>
                     ) : null}
+                    {user.isReferrerProfile ? (
+                      <Badge tone="warning">Referente</Badge>
+                    ) : null}
                     {(user.referralCount ?? 0) > 0 ? (
                       <Badge tone="neutral">
                         {user.referralCount} referido
@@ -872,6 +901,9 @@ export default function UsersPage() {
                         {user.referralCount === 1 ? "" : "s"}
                       </Badge>
                     ) : null}
+                    {user.isReferrerProfile ? (
+                      <Badge tone="warning">Referente</Badge>
+                    ) : null}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-slate-600">
@@ -891,6 +923,9 @@ export default function UsersPage() {
                     )}
                     {prueba ? <Badge tone="warning">Prueba</Badge> : null}
                     {blacklisted ? <Badge tone="danger">Lista negra</Badge> : null}
+                    {user.isReferrerProfile ? (
+                      <Badge tone="warning">Referente</Badge>
+                    ) : null}
                   </div>
                 </td>
                 <td className="px-4 py-3 text-slate-600">
@@ -1049,7 +1084,11 @@ export default function UsersPage() {
               Cancelar
             </Button>
             <Button onClick={onAssignReferrer} disabled={saving}>
-              {saving ? "Guardando..." : "Guardar"}
+              {saving
+                ? "Guardando..."
+                : creatingReferrer
+                  ? "Crear y asignar"
+                  : "Guardar"}
             </Button>
           </>
         }
@@ -1060,33 +1099,95 @@ export default function UsersPage() {
             {referUser?.email ? ` (${referUser.email})` : ""} bajo la persona
             que lo refirió.
           </p>
-          <Input
-            label="Buscar referente"
-            value={referrerQuery}
-            onChange={(e) => setReferrerQuery(e.target.value)}
-            placeholder="Nombre, email o teléfono"
-          />
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium text-slate-700">
-              Referido por
-            </span>
-            <select
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400"
-              value={referrerId}
-              onChange={(e) => setReferrerId(e.target.value)}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              className={`min-h-11 rounded-xl border px-3 py-2 text-sm font-medium ${
+                !creatingReferrer
+                  ? "border-zinc-900 bg-zinc-950 text-white"
+                  : "border-zinc-200 bg-white text-zinc-700"
+              }`}
+              onClick={() => setCreatingReferrer(false)}
             >
-              <option value="">Sin referente</option>
-              {referrerOptions.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {userDisplayName(user)}
-                  {user.email ? ` (${user.email})` : ""}
-                  {(user.referralCount ?? 0) > 0
-                    ? ` · ${user.referralCount} referidos`
-                    : ""}
-                </option>
-              ))}
-            </select>
-          </label>
+              De la lista
+            </button>
+            <button
+              type="button"
+              className={`min-h-11 rounded-xl border px-3 py-2 text-sm font-medium ${
+                creatingReferrer
+                  ? "border-zinc-900 bg-zinc-950 text-white"
+                  : "border-zinc-200 bg-white text-zinc-700"
+              }`}
+              onClick={() => setCreatingReferrer(true)}
+            >
+              Crear nuevo
+            </button>
+          </div>
+          {creatingReferrer ? (
+            <>
+              <Input
+                label="Nombre"
+                value={newReferrer.firstName}
+                onChange={(e) =>
+                  setNewReferrer({ ...newReferrer, firstName: e.target.value })
+                }
+                required
+              />
+              <Input
+                label="Apellido"
+                value={newReferrer.lastName}
+                onChange={(e) =>
+                  setNewReferrer({ ...newReferrer, lastName: e.target.value })
+                }
+              />
+              <Input
+                label="Teléfono"
+                value={newReferrer.phone}
+                onChange={(e) =>
+                  setNewReferrer({ ...newReferrer, phone: e.target.value })
+                }
+              />
+              <Input
+                label="Email"
+                type="email"
+                value={newReferrer.email}
+                onChange={(e) =>
+                  setNewReferrer({ ...newReferrer, email: e.target.value })
+                }
+              />
+            </>
+          ) : (
+            <>
+              <Input
+                label="Buscar referente"
+                value={referrerQuery}
+                onChange={(e) => setReferrerQuery(e.target.value)}
+                placeholder="Nombre, email o teléfono"
+              />
+              <label className="block space-y-1.5">
+                <span className="text-sm font-medium text-slate-700">
+                  Referido por
+                </span>
+                <select
+                  className="min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400"
+                  value={referrerId}
+                  onChange={(e) => setReferrerId(e.target.value)}
+                >
+                  <option value="">Sin referente</option>
+                  {referrerOptions.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {userDisplayName(user)}
+                      {user.email ? ` (${user.email})` : ""}
+                      {user.isReferrerProfile ? " · perfil" : ""}
+                      {(user.referralCount ?? 0) > 0
+                        ? ` · ${user.referralCount} referidos`
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
         </form>
       </Modal>
 
