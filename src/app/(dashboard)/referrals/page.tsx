@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { formatDate, userDisplayName } from "@/lib/format";
-import { childrenOf, descendantIds } from "@/lib/referrals";
+import { childrenOf, descendantIds, isReferrerOnly } from "@/lib/referrals";
 import type { Membership, User } from "@/lib/types";
 import { useToast } from "@/context/ToastContext";
 import { Button } from "@/components/ui/Button";
@@ -62,7 +62,9 @@ export default function ReferralsPage() {
 
   const referrers = useMemo(() => {
     const list = users
-      .filter((user) => (user.referralCount ?? 0) > 0)
+      .filter(
+        (user) => isReferrerOnly(user) || (user.referralCount ?? 0) > 0,
+      )
       .sort((a, b) => (b.referralCount ?? 0) - (a.referralCount ?? 0));
     const q = query.trim().toLowerCase();
     if (!q) return list;
@@ -75,7 +77,8 @@ export default function ReferralsPage() {
   }, [query, users]);
 
   const unassigned = useMemo(
-    () => users.filter((user) => !user.referredById),
+    () =>
+      users.filter((user) => !user.referredById && !isReferrerOnly(user)),
     [users],
   );
 
@@ -92,6 +95,7 @@ export default function ReferralsPage() {
     return users.filter((user) => {
       if (blocked.has(user.id)) return false;
       if (user.referredById === nestParent.id) return false;
+      if (isReferrerOnly(user)) return false;
       if (!query) return true;
       const haystack = [
         userDisplayName(user),
@@ -206,7 +210,10 @@ export default function ReferralsPage() {
         <div className="rounded-2xl border border-zinc-200/80 bg-white/80 px-3 py-3 shadow-sm sm:rounded-3xl sm:px-4">
           <p className="text-xs text-zinc-500 sm:text-sm">Referentes</p>
           <p className="mt-1 text-xl font-semibold text-zinc-950 sm:text-2xl">
-            {users.filter((user) => (user.referralCount ?? 0) > 0).length}
+            {users.filter(
+              (user) =>
+                isReferrerOnly(user) || (user.referralCount ?? 0) > 0,
+            ).length}
           </p>
         </div>
         <div className="rounded-2xl border border-zinc-200/80 bg-white/80 px-3 py-3 shadow-sm sm:rounded-3xl sm:px-4">
@@ -232,8 +239,8 @@ export default function ReferralsPage() {
         />
       </div>
 
-      {users.filter((user) => (user.referralCount ?? 0) > 0).length === 0 ? (
-        <EmptyState message="Aún no hay referidos. En Usuarios, Acciones → Asignar referente." />
+      {referrers.length === 0 && !query.trim() ? (
+        <EmptyState message="Aún no hay referentes. Crea uno al asignar un referido." />
       ) : referrers.length === 0 ? (
         <EmptyState message="Ningún referente coincide con la búsqueda" />
       ) : (
@@ -265,6 +272,9 @@ export default function ReferralsPage() {
                     </p>
                   </button>
                   <div className="flex flex-wrap items-center gap-2">
+                    {isReferrerOnly(referrer) ? (
+                      <Badge tone="warning">Referente</Badge>
+                    ) : null}
                     <Badge tone="neutral">
                       {referrer.referralCount} referido
                       {referrer.referralCount === 1 ? "" : "s"}

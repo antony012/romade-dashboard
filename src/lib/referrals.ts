@@ -1,6 +1,10 @@
 import { userDisplayName } from "./format";
 import type { User } from "./types";
 
+export function isReferrerOnly(user: User): boolean {
+  return user.isReferrerProfile === true;
+}
+
 export function flattenReferralTree(
   users: User[],
 ): { user: User; depth: number }[] {

@@ -3,7 +3,11 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { formatDate, userDisplayName } from "@/lib/format";
-import { descendantIds, flattenReferralTree } from "@/lib/referrals";
+import {
+  descendantIds,
+  flattenReferralTree,
+  isReferrerOnly,
+} from "@/lib/referrals";
 import type { Membership, User } from "@/lib/types";
 import { useToast } from "@/context/ToastContext";
 import { Button } from "@/components/ui/Button";
@@ -326,8 +330,13 @@ export default function UsersPage() {
     void load();
   }, []);
 
+  const appUsers = useMemo(
+    () => users.filter((user) => !isReferrerOnly(user)),
+    [users],
+  );
+
   const visibleUsers = useMemo(() => {
-    return users.filter((user) => {
+    return appUsers.filter((user) => {
       const active = hasActiveMembership(user);
       if (filter === "active") return active;
       if (filter === "inactive") return !active;
@@ -339,14 +348,14 @@ export default function UsersPage() {
       if (filter === "referred") return Boolean(user.referredById);
       return true;
     });
-  }, [users, filter]);
+  }, [appUsers, filter]);
 
   const tableRows = useMemo(() => {
     if (filter === "referrals") {
-      return flattenReferralTree(users);
+      return flattenReferralTree(appUsers);
     }
     return visibleUsers.map((user) => ({ user, depth: 0 }));
-  }, [filter, users, visibleUsers]);
+  }, [filter, appUsers, visibleUsers]);
 
   const referrerOptions = useMemo(() => {
     if (!referUser) return [];
@@ -726,11 +735,11 @@ export default function UsersPage() {
         </label>
         <div className="flex flex-wrap items-center gap-2">
           <div className="rounded-full bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 ring-1 ring-amber-200">
-            {visibleUsers.length} de {users.length} usuarios
+            {visibleUsers.length} de {appUsers.length} usuarios
           </div>
           <div className="rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-700 ring-1 ring-zinc-200">
-            {users.filter((user) => (user.referralCount ?? 0) > 0).length}{" "}
-            referentes · {users.filter((user) => user.referredById).length}{" "}
+            {appUsers.filter((user) => (user.referralCount ?? 0) > 0).length}{" "}
+            referentes · {appUsers.filter((user) => user.referredById).length}{" "}
             referidos
           </div>
         </div>
