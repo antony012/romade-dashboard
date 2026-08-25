@@ -113,6 +113,12 @@ export default function MembershipsPage() {
     });
   }
 
+  function isUserBlacklisted(membership: Membership) {
+    return users.some(
+      (user) => user.id === membership.userId && user.blacklisted === true,
+    );
+  }
+
   function isPending(m: Membership) {
     return (
       m.status === "pending" ||
@@ -126,6 +132,12 @@ export default function MembershipsPage() {
     const price = parseMoneyAmount(createForm.price);
     if (price == null) {
       toast("El precio debe ser mayor a 0", "error");
+      return;
+    }
+
+    const selected = users.find((user) => user.id === createForm.userId);
+    if (selected?.blacklisted) {
+      toast("Este usuario está en lista negra", "error");
       return;
     }
 
@@ -298,6 +310,8 @@ export default function MembershipsPage() {
   }
 
   function statusBadge(m: Membership) {
+    if (isUserBlacklisted(m))
+      return <Badge tone="danger">Lista negra</Badge>;
     if (isPending(m)) return <Badge tone="warning">Pendiente de pago</Badge>;
     if (m.isCurrentlyActive || m.status === "active")
       return <Badge tone="success">Activa</Badge>;
@@ -432,7 +446,7 @@ export default function MembershipsPage() {
                     <Button onClick={() => openVerify(m)}>
                       Verificar pago
                     </Button>
-                  ) : m.canReactivate === false ? null : (
+                  ) : m.canReactivate === false || isUserBlacklisted(m) ? null : (
                     <Button
                       variant="secondary"
                       onClick={() => openReactivate(m)}
@@ -474,11 +488,13 @@ export default function MembershipsPage() {
               required
             >
               <option value="">Seleccionar usuario</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {userDisplayName(u)} {u.email ? `(${u.email})` : ""}
-                </option>
-              ))}
+              {users
+                .filter((u) => u.blacklisted !== true)
+                .map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {userDisplayName(u)} {u.email ? `(${u.email})` : ""}
+                  </option>
+                ))}
             </select>
           </label>
           <Input

@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/States";
 import { Table } from "@/components/ui/Table";
 
-type UserFilter = "all" | "active" | "inactive" | "notes" | "verified";
+type UserFilter = "all" | "active" | "inactive" | "notes" | "verified" | "blacklisted";
 
 function activeMemberships(user: User): Membership[] {
   return (user.memberships ?? []).filter((m) => m.isCurrentlyActive);
@@ -58,10 +58,12 @@ function UserActionsMenu({
   active,
   isPrueba,
   isVerified,
+  isBlacklisted,
   onEdit,
   onNotes,
   onPrueba,
   onVerify,
+  onBlacklist,
   onJwt,
   onMembership,
   onCancel,
@@ -71,10 +73,12 @@ function UserActionsMenu({
   active: boolean;
   isPrueba: boolean;
   isVerified: boolean;
+  isBlacklisted: boolean;
   onEdit: (user: User) => void;
   onNotes: (user: User) => void;
   onPrueba: (user: User) => void;
   onVerify: (user: User) => void;
+  onBlacklist: (user: User) => void;
   onJwt: (user: User) => void;
   onMembership: (user: User) => void;
   onCancel: (user: User) => void;
@@ -160,6 +164,20 @@ function UserActionsMenu({
           </button>
           <button
             type="button"
+            className={`${itemClass} ${
+              isBlacklisted
+                ? "bg-red-50 font-medium text-red-800 hover:bg-red-100"
+                : "text-red-700 hover:bg-red-50"
+            }`}
+            onClick={() => {
+              setOpen(false);
+              onBlacklist(user);
+            }}
+          >
+            {isBlacklisted ? "Quitar de lista negra" : "Lista negra"}
+          </button>
+          <button
+            type="button"
             className={itemClass}
             onClick={() => {
               setOpen(false);
@@ -168,7 +186,7 @@ function UserActionsMenu({
           >
             Ver JWT
           </button>
-          {!active ? (
+          {!active && !isBlacklisted ? (
             <>
               <button
                 type="button"
@@ -191,7 +209,7 @@ function UserActionsMenu({
                 Eliminar
               </button>
             </>
-          ) : (
+          ) : active ? (
             <button
               type="button"
               className={`${itemClass} text-red-600 hover:bg-red-50`}
@@ -201,6 +219,17 @@ function UserActionsMenu({
               }}
             >
               Cancelar acceso
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={`${itemClass} text-red-600 hover:bg-red-50`}
+              onClick={() => {
+                setOpen(false);
+                onDelete(user);
+              }}
+            >
+              Eliminar
             </button>
           )}
         </div>
@@ -221,6 +250,7 @@ export default function UsersPage() {
   const [membershipUser, setMembershipUser] = useState<User | null>(null);
   const [cancelUser, setCancelUser] = useState<User | null>(null);
   const [deleteUser, setDeleteUser] = useState<User | null>(null);
+  const [blacklistUser, setBlacklistUser] = useState<User | null>(null);
   const [jwtUser, setJwtUser] = useState<User | null>(null);
   const [jwtToken, setJwtToken] = useState("");
   const [jwtLoading, setJwtLoading] = useState(false);
@@ -260,6 +290,7 @@ export default function UsersPage() {
       if (filter === "inactive") return !active;
       if (filter === "notes") return Boolean(user.notes?.trim());
       if (filter === "verified") return user.verified === true;
+      if (filter === "blacklisted") return user.blacklisted === true;
       return true;
     });
   }, [users, filter]);
@@ -411,12 +442,43 @@ export default function UsersPage() {
     }
   }
 
+  async function onToggleBlacklist() {
+    if (!blacklistUser) return;
+    const next = !(blacklistUser.blacklisted === true);
+    setSaving(true);
+    try {
+      const updated = await api.updateUser(blacklistUser.id, {
+        blacklisted: next,
+      });
+      setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+      setBlacklistUser(null);
+      toast(
+        next
+          ? "Usuario en lista negra. Quedó inactivo y no podrá entrar."
+          : "Usuario quitado de la lista negra",
+      );
+    } catch (err) {
+      toast(
+        err instanceof ApiError
+          ? err.message
+          : "No se pudo actualizar la lista negra",
+        "error",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function onCreateMembership(e: FormEvent) {
     e.preventDefault();
     if (!membershipUser) return;
 
     if (hasActiveMembership(membershipUser)) {
       toast("El usuario ya tiene una membresía activa", "error");
+      return;
+    }
+    if (membershipUser.blacklisted) {
+      toast("Este usuario está en lista negra", "error");
       return;
     }
 
@@ -516,7 +578,7 @@ export default function UsersPage() {
     <div>
       <PageHeader
         title="Usuarios"
-        description="Observaciones, filtros y membresías en un solo lugar"
+        description="Observaciones, filtros, lista negra y membresías en un solo lugar"
       />
 
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3 rounded-3xl border border-zinc-200/80 bg-white/70 p-4 shadow-sm shadow-zinc-950/5 backdrop-blur">
@@ -532,6 +594,7 @@ export default function UsersPage() {
             <option value="inactive">Sin membresía activa</option>
             <option value="notes">Con observaciones</option>
             <option value="verified">Verificados (corona)</option>
+            <option value="blacklisted">Lista negra</option>
           </select>
         </label>
         <div className="rounded-full bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 ring-1 ring-amber-200">
@@ -558,13 +621,16 @@ export default function UsersPage() {
             const pending = hasPendingMembership(user);
             const prueba = isPruebaNote(user.notes);
             const verified = user.verified === true;
+            const blacklisted = user.blacklisted === true;
             return (
               <tr
                 key={user.id}
                 className={
-                  prueba
-                    ? "bg-amber-100 hover:bg-amber-200/80"
-                    : "hover:bg-slate-50"
+                  blacklisted
+                    ? "bg-red-50 hover:bg-red-100/80"
+                    : prueba
+                      ? "bg-amber-100 hover:bg-amber-200/80"
+                      : "hover:bg-slate-50"
                 }
               >
                 <td className="px-4 py-3 font-medium text-slate-900">
@@ -596,6 +662,7 @@ export default function UsersPage() {
                       <Badge tone="neutral">Sin activa</Badge>
                     )}
                     {prueba ? <Badge tone="warning">Prueba</Badge> : null}
+                    {blacklisted ? <Badge tone="danger">Lista negra</Badge> : null}
                   </div>
                 </td>
                 <td className="max-w-[16rem] px-4 py-3 text-slate-600">
@@ -627,10 +694,12 @@ export default function UsersPage() {
                     active={active}
                     isPrueba={prueba}
                     isVerified={verified}
+                    isBlacklisted={blacklisted}
                     onEdit={openEdit}
                     onNotes={openNotes}
                     onPrueba={onTogglePrueba}
                     onVerify={onToggleVerified}
+                    onBlacklist={setBlacklistUser}
                     onJwt={openJwt}
                     onMembership={openMembership}
                     onCancel={setCancelUser}
@@ -758,6 +827,49 @@ export default function UsersPage() {
             required
           />
         </form>
+      </Modal>
+
+      <Modal
+        open={!!blacklistUser}
+        title={
+          blacklistUser?.blacklisted
+            ? "Quitar de lista negra"
+            : "Agregar a lista negra"
+        }
+        onClose={() => setBlacklistUser(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setBlacklistUser(null)}>
+              Volver
+            </Button>
+            <Button
+              variant={blacklistUser?.blacklisted ? "primary" : "danger"}
+              onClick={() => void onToggleBlacklist()}
+              disabled={saving}
+            >
+              {saving
+                ? "Guardando..."
+                : blacklistUser?.blacklisted
+                  ? "Quitar de lista negra"
+                  : "Bloquear usuario"}
+            </Button>
+          </>
+        }
+      >
+        {blacklistUser?.blacklisted ? (
+          <p className="text-sm text-slate-600">
+            <strong>{userDisplayName(blacklistUser)}</strong> podrá volver a
+            recibir membresía. No se reactiva solo: hay que agregársela o
+            reactivar la suscripción.
+          </p>
+        ) : (
+          <p className="text-sm text-slate-600">
+            <strong>{userDisplayName(blacklistUser)}</strong>
+            {blacklistUser?.email ? ` (${blacklistUser.email})` : ""} quedará
+            inactivo de inmediato. Si intenta entrar, el sistema lo bloqueará
+            hasta que lo quites de la lista negra.
+          </p>
+        )}
       </Modal>
 
       <Modal

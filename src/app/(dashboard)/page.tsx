@@ -173,9 +173,14 @@ export default function HomePage() {
                       {user.email ?? user.sub ?? "—"}
                     </p>
                   </div>
-                  <p className="text-xs text-slate-400">
-                    {formatDate(user.createdAt)}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    {user.blacklisted ? (
+                      <Badge tone="danger">Lista negra</Badge>
+                    ) : null}
+                    <p className="text-xs text-slate-400">
+                      {formatDate(user.createdAt)}
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>
