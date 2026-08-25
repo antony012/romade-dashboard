@@ -64,6 +64,9 @@ export interface User {
   notes: string | null;
   verified?: boolean;
   blacklisted?: boolean;
+  referredById?: string | null;
+  referredBy?: MembershipUser | null;
+  referralCount?: number;
   dasherId?: string | null;
   sub: string | null;
   iss: string | null;
@@ -122,6 +125,7 @@ export interface UpdateUserPayload {
   notes?: string;
   verified?: boolean;
   blacklisted?: boolean;
+  referredById?: string | null;
 }
 
 export interface CreateMembershipPayload {

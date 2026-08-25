@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { formatDate, userDisplayName } from "@/lib/format";
+import { descendantIds, flattenReferralTree } from "@/lib/referrals";
 import type { Membership, User } from "@/lib/types";
 import { useToast } from "@/context/ToastContext";
 import { Button } from "@/components/ui/Button";
@@ -17,7 +18,16 @@ import {
 } from "@/components/ui/States";
 import { Table } from "@/components/ui/Table";
 
-type UserFilter = "all" | "active" | "inactive" | "notes" | "verified" | "blacklisted";
+type UserFilter =
+  | "all"
+  | "active"
+  | "inactive"
+  | "notes"
+  | "verified"
+  | "blacklisted"
+  | "referrals"
+  | "referrers"
+  | "referred";
 
 function activeMemberships(user: User): Membership[] {
   return (user.memberships ?? []).filter((m) => m.isCurrentlyActive);
@@ -64,6 +74,7 @@ function UserActionsMenu({
   onPrueba,
   onVerify,
   onBlacklist,
+  onRefer,
   onJwt,
   onMembership,
   onCancel,
@@ -79,6 +90,7 @@ function UserActionsMenu({
   onPrueba: (user: User) => void;
   onVerify: (user: User) => void;
   onBlacklist: (user: User) => void;
+  onRefer: (user: User) => void;
   onJwt: (user: User) => void;
   onMembership: (user: User) => void;
   onCancel: (user: User) => void;
@@ -98,19 +110,30 @@ function UserActionsMenu({
   }, []);
 
   const itemClass =
-    "block w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-100";
+    "block w-full px-4 py-3 text-left text-sm text-zinc-700 hover:bg-zinc-100 md:px-3 md:py-2";
 
   return (
-    <div ref={rootRef} className="relative inline-block text-left">
+    <div ref={rootRef} className="relative inline-block w-full text-left md:w-auto">
+      {open ? (
+        <button
+          type="button"
+          aria-label="Cerrar acciones"
+          className="fixed inset-0 z-40 bg-slate-900/40 md:hidden"
+          onClick={() => setOpen(false)}
+        />
+      ) : null}
       <Button
         variant="secondary"
-        className="min-w-[7.5rem]"
+        className="w-full md:min-w-[7.5rem] md:w-auto"
         onClick={() => setOpen((value) => !value)}
       >
         Acciones ▾
       </Button>
       {open ? (
-        <div className="absolute right-0 z-20 mt-1 w-56 overflow-hidden rounded-2xl border border-zinc-200 bg-white py-1 shadow-xl shadow-zinc-950/10">
+        <div className="fixed inset-x-0 bottom-0 z-50 max-h-[70vh] overflow-y-auto rounded-t-3xl border border-zinc-200 bg-white py-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-xl shadow-zinc-950/10 md:absolute md:inset-auto md:right-0 md:mt-1 md:max-h-none md:w-56 md:rounded-2xl md:py-1">
+          <p className="px-4 pb-1 pt-2 text-xs font-medium uppercase tracking-wider text-zinc-400 md:hidden">
+            Acciones
+          </p>
           <button
             type="button"
             className={itemClass}
@@ -175,6 +198,16 @@ function UserActionsMenu({
             }}
           >
             {isBlacklisted ? "Quitar de lista negra" : "Lista negra"}
+          </button>
+          <button
+            type="button"
+            className={itemClass}
+            onClick={() => {
+              setOpen(false);
+              onRefer(user);
+            }}
+          >
+            Asignar referente
           </button>
           <button
             type="button"
@@ -251,6 +284,9 @@ export default function UsersPage() {
   const [cancelUser, setCancelUser] = useState<User | null>(null);
   const [deleteUser, setDeleteUser] = useState<User | null>(null);
   const [blacklistUser, setBlacklistUser] = useState<User | null>(null);
+  const [referUser, setReferUser] = useState<User | null>(null);
+  const [referrerId, setReferrerId] = useState("");
+  const [referrerQuery, setReferrerQuery] = useState("");
   const [jwtUser, setJwtUser] = useState<User | null>(null);
   const [jwtToken, setJwtToken] = useState("");
   const [jwtLoading, setJwtLoading] = useState(false);
@@ -291,9 +327,38 @@ export default function UsersPage() {
       if (filter === "notes") return Boolean(user.notes?.trim());
       if (filter === "verified") return user.verified === true;
       if (filter === "blacklisted") return user.blacklisted === true;
+      if (filter === "referrals") return true;
+      if (filter === "referrers") return (user.referralCount ?? 0) > 0;
+      if (filter === "referred") return Boolean(user.referredById);
       return true;
     });
   }, [users, filter]);
+
+  const tableRows = useMemo(() => {
+    if (filter === "referrals") {
+      return flattenReferralTree(users);
+    }
+    return visibleUsers.map((user) => ({ user, depth: 0 }));
+  }, [filter, users, visibleUsers]);
+
+  const referrerOptions = useMemo(() => {
+    if (!referUser) return [];
+    const blocked = descendantIds(users, referUser.id);
+    blocked.add(referUser.id);
+    const query = referrerQuery.trim().toLowerCase();
+    return users.filter((user) => {
+      if (blocked.has(user.id)) return false;
+      if (!query) return true;
+      const haystack = [
+        userDisplayName(user),
+        user.email ?? "",
+        user.phone ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [referUser, referrerQuery, users]);
 
   function openEdit(user: User) {
     setEditing(user);
@@ -309,6 +374,12 @@ export default function UsersPage() {
   function openNotes(user: User) {
     setNotesUser(user);
     setNotesDraft(user.notes ?? "");
+  }
+
+  function openRefer(user: User) {
+    setReferUser(user);
+    setReferrerId(user.referredById ?? "");
+    setReferrerQuery("");
   }
 
   function openMembership(user: User) {
@@ -386,6 +457,33 @@ export default function UsersPage() {
         err instanceof ApiError
           ? err.message
           : "No se pudieron guardar las observaciones",
+        "error",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onAssignReferrer(e: FormEvent) {
+    e.preventDefault();
+    if (!referUser) return;
+    setSaving(true);
+    try {
+      await api.updateUser(referUser.id, {
+        referredById: referrerId || null,
+      });
+      setUsers(await api.listUsers());
+      setReferUser(null);
+      toast(
+        referrerId
+          ? "Referente asignado"
+          : "Se quitó el referente de este usuario",
+      );
+    } catch (err) {
+      toast(
+        err instanceof ApiError
+          ? err.message
+          : "No se pudo asignar el referente",
         "error",
       );
     } finally {
@@ -578,11 +676,11 @@ export default function UsersPage() {
     <div>
       <PageHeader
         title="Usuarios"
-        description="Observaciones, filtros, lista negra y membresías en un solo lugar"
+        description="Observaciones, referidos, lista negra y membresías en un solo lugar"
       />
 
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3 rounded-3xl border border-zinc-200/80 bg-white/70 p-4 shadow-sm shadow-zinc-950/5 backdrop-blur">
-        <label className="block min-w-[16rem] space-y-1.5">
+      <div className="mb-5 flex flex-col gap-3 rounded-3xl border border-zinc-200/80 bg-white/70 p-4 shadow-sm shadow-zinc-950/5 backdrop-blur sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+        <label className="block w-full space-y-1.5 sm:min-w-[16rem] sm:max-w-sm">
           <span className="text-sm font-medium text-slate-700">Filtrar</span>
           <select
             className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400"
@@ -595,33 +693,149 @@ export default function UsersPage() {
             <option value="notes">Con observaciones</option>
             <option value="verified">Verificados (corona)</option>
             <option value="blacklisted">Lista negra</option>
+            <option value="referrals">Árbol de referidos</option>
+            <option value="referrers">Referentes</option>
+            <option value="referred">Referidos</option>
           </select>
         </label>
-        <div className="rounded-full bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 ring-1 ring-amber-200">
-          {visibleUsers.length} de {users.length} usuarios
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="rounded-full bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 ring-1 ring-amber-200">
+            {visibleUsers.length} de {users.length} usuarios
+          </div>
+          <div className="rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-700 ring-1 ring-zinc-200">
+            {users.filter((user) => (user.referralCount ?? 0) > 0).length}{" "}
+            referentes · {users.filter((user) => user.referredById).length}{" "}
+            referidos
+          </div>
         </div>
       </div>
 
-      {visibleUsers.length === 0 ? (
+      {tableRows.length === 0 ? (
         <EmptyState message="No hay usuarios en este filtro" />
       ) : (
+        <>
+          <div className="space-y-3 md:hidden">
+            {tableRows.map(({ user, depth }) => {
+              const active = hasActiveMembership(user);
+              const pending = hasPendingMembership(user);
+              const prueba = isPruebaNote(user.notes);
+              const verified = user.verified === true;
+              const blacklisted = user.blacklisted === true;
+              const referrer =
+                user.referredBy ??
+                users.find((item) => item.id === user.referredById) ??
+                null;
+              return (
+                <article
+                  key={user.id}
+                  className={`rounded-3xl border border-zinc-200/80 p-4 shadow-sm ${
+                    blacklisted
+                      ? "bg-red-50"
+                      : prueba
+                        ? "bg-amber-100"
+                        : "bg-white/80"
+                  }`}
+                  style={{ marginLeft: `${Math.min(depth, 3) * 0.75}rem` }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="flex flex-wrap items-center gap-2 font-medium text-slate-900">
+                        {depth > 0 ? (
+                          <span className="text-slate-300" aria-hidden>
+                            └
+                          </span>
+                        ) : null}
+                        {verified ? (
+                          <CrownIcon className="h-4 w-4 text-amber-500" />
+                        ) : null}
+                        <span className="break-words">
+                          {userDisplayName(user)}
+                        </span>
+                      </p>
+                      <p className="mt-1 break-all text-sm text-slate-500">
+                        {user.email ?? user.phone ?? "Sin contacto"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {active ? (
+                      <Badge tone="success">Activa</Badge>
+                    ) : pending ? (
+                      <Badge tone="warning">Pendiente de pago</Badge>
+                    ) : (
+                      <Badge tone="neutral">Sin activa</Badge>
+                    )}
+                    {prueba ? <Badge tone="warning">Prueba</Badge> : null}
+                    {blacklisted ? (
+                      <Badge tone="danger">Lista negra</Badge>
+                    ) : null}
+                    {(user.referralCount ?? 0) > 0 ? (
+                      <Badge tone="neutral">
+                        {user.referralCount} referido
+                        {user.referralCount === 1 ? "" : "s"}
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <p className="mt-3 text-sm text-slate-600">
+                    Referente:{" "}
+                    <button
+                      type="button"
+                      className="font-medium text-slate-800 underline-offset-2 hover:underline"
+                      onClick={() => openRefer(user)}
+                    >
+                      {referrer ? userDisplayName(referrer) : "Asignar"}
+                    </button>
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {formatDate(user.createdAt)}
+                  </p>
+                  <div className="mt-3">
+                    <UserActionsMenu
+                      user={user}
+                      active={active}
+                      isPrueba={prueba}
+                      isVerified={verified}
+                      isBlacklisted={blacklisted}
+                      onEdit={openEdit}
+                      onNotes={openNotes}
+                      onPrueba={onTogglePrueba}
+                      onVerify={onToggleVerified}
+                      onBlacklist={setBlacklistUser}
+                      onRefer={openRefer}
+                      onJwt={openJwt}
+                      onMembership={openMembership}
+                      onCancel={setCancelUser}
+                      onDelete={setDeleteUser}
+                    />
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+
+          <div className="hidden md:block">
         <Table
           headers={[
             "Nombre",
             "Email",
             "Teléfono",
             "Membresía",
+            "Referente",
             "Observaciones",
             "Creado",
             "Acciones",
           ]}
         >
-          {visibleUsers.map((user) => {
+          {tableRows.map(({ user, depth }) => {
             const active = hasActiveMembership(user);
             const pending = hasPendingMembership(user);
             const prueba = isPruebaNote(user.notes);
             const verified = user.verified === true;
             const blacklisted = user.blacklisted === true;
+            const referrer =
+              user.referredBy ??
+              users.find((item) => item.id === user.referredById) ??
+              null;
             return (
               <tr
                 key={user.id}
@@ -634,7 +848,15 @@ export default function UsersPage() {
                 }
               >
                 <td className="px-4 py-3 font-medium text-slate-900">
-                  <span className="inline-flex items-center gap-2">
+                  <span
+                    className="inline-flex items-center gap-2"
+                    style={{ paddingLeft: `${depth * 1.25}rem` }}
+                  >
+                    {depth > 0 ? (
+                      <span className="text-slate-300" aria-hidden>
+                        └
+                      </span>
+                    ) : null}
                     {verified ? (
                       <span
                         className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-amber-100 text-amber-500 ring-1 ring-amber-300"
@@ -644,6 +866,12 @@ export default function UsersPage() {
                       </span>
                     ) : null}
                     <span>{userDisplayName(user)}</span>
+                    {(user.referralCount ?? 0) > 0 ? (
+                      <Badge tone="neutral">
+                        {user.referralCount} referido
+                        {user.referralCount === 1 ? "" : "s"}
+                      </Badge>
+                    ) : null}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-slate-600">
@@ -664,6 +892,25 @@ export default function UsersPage() {
                     {prueba ? <Badge tone="warning">Prueba</Badge> : null}
                     {blacklisted ? <Badge tone="danger">Lista negra</Badge> : null}
                   </div>
+                </td>
+                <td className="px-4 py-3 text-slate-600">
+                  {referrer ? (
+                    <button
+                      type="button"
+                      className="text-left text-sm text-slate-700 hover:text-zinc-950"
+                      onClick={() => openRefer(user)}
+                    >
+                      {userDisplayName(referrer)}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="text-sm text-slate-400 hover:text-zinc-700"
+                      onClick={() => openRefer(user)}
+                    >
+                      Asignar
+                    </button>
+                  )}
                 </td>
                 <td className="max-w-[16rem] px-4 py-3 text-slate-600">
                   {user.notes?.trim() ? (
@@ -700,6 +947,7 @@ export default function UsersPage() {
                     onPrueba={onTogglePrueba}
                     onVerify={onToggleVerified}
                     onBlacklist={setBlacklistUser}
+                    onRefer={openRefer}
                     onJwt={openJwt}
                     onMembership={openMembership}
                     onCancel={setCancelUser}
@@ -710,6 +958,8 @@ export default function UsersPage() {
             );
           })}
         </Table>
+          </div>
+        </>
       )}
 
       <Modal
@@ -786,6 +1036,57 @@ export default function UsersPage() {
             onChange={(e) => setNotesDraft(e.target.value)}
             placeholder="Ej.: pagó por Zelle, renovar el viernes…"
           />
+        </form>
+      </Modal>
+
+      <Modal
+        open={!!referUser}
+        title="Asignar referente"
+        onClose={() => setReferUser(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setReferUser(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={onAssignReferrer} disabled={saving}>
+              {saving ? "Guardando..." : "Guardar"}
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={onAssignReferrer} className="space-y-3">
+          <p className="text-sm text-slate-600">
+            Anida a <strong>{userDisplayName(referUser)}</strong>
+            {referUser?.email ? ` (${referUser.email})` : ""} bajo la persona
+            que lo refirió.
+          </p>
+          <Input
+            label="Buscar referente"
+            value={referrerQuery}
+            onChange={(e) => setReferrerQuery(e.target.value)}
+            placeholder="Nombre, email o teléfono"
+          />
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium text-slate-700">
+              Referido por
+            </span>
+            <select
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400"
+              value={referrerId}
+              onChange={(e) => setReferrerId(e.target.value)}
+            >
+              <option value="">Sin referente</option>
+              {referrerOptions.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {userDisplayName(user)}
+                  {user.email ? ` (${user.email})` : ""}
+                  {(user.referralCount ?? 0) > 0
+                    ? ` · ${user.referralCount} referidos`
+                    : ""}
+                </option>
+              ))}
+            </select>
+          </label>
         </form>
       </Modal>
 
