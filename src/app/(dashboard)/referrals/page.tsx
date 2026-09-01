@@ -199,10 +199,16 @@ export default function ReferralsPage() {
 
   function exportSheets(list: User[]) {
     const sheets = list.map((referrer) => buildReferrerSheet(users, referrer));
-    const opened = openReferrerSheets(sheets);
-    if (!opened) {
-      toast("Permite ventanas emergentes para exportar", "error");
+    const result = openReferrerSheets(sheets);
+    if (result === "opened") {
+      toast("Ficha lista. Usa Imprimir o guardar PDF");
+      return;
     }
+    if (result === "downloaded") {
+      toast("Se descargó la ficha. Ábrela y guarda como PDF");
+      return;
+    }
+    toast("No se pudo exportar la ficha", "error");
   }
 
   if (loading) return <LoadingState />;

@@ -198,16 +198,42 @@ function printDocument(title: string, body: string): string {
 </html>`;
 }
 
-export function openReferrerSheets(sheets: ReferrerSheet[]): boolean {
+function sheetFileName(sheets: ReferrerSheet[]): string {
+  const raw =
+    sheets.length === 1
+      ? `ROMADE-${userDisplayName(sheets[0].referrer)}`
+      : "ROMADE-referidos";
+  const safe = raw.replace(/[<>:"/\\|?*]+/g, " ").replace(/\s+/g, "-").slice(0, 80);
+  return `${safe}.html`;
+}
+
+function downloadHtml(url: string, fileName: string) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+export function openReferrerSheets(
+  sheets: ReferrerSheet[],
+): "opened" | "downloaded" | false {
   if (typeof window === "undefined" || sheets.length === 0) return false;
-  const popup = window.open("", "_blank", "noopener,noreferrer,width=980,height=800");
-  if (!popup) return false;
   const title =
     sheets.length === 1
       ? `ROMADE · ${userDisplayName(sheets[0].referrer)}`
       : "ROMADE · Referidos";
-  popup.document.write(printDocument(title, sheets.map(sheetSection).join("")));
-  popup.document.close();
-  popup.focus();
-  return true;
+  const html = printDocument(title, sheets.map(sheetSection).join(""));
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const popup = window.open(url, "_blank");
+  if (popup) {
+    popup.focus();
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    return "opened";
+  }
+  downloadHtml(url, sheetFileName(sheets));
+  window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  return "downloaded";
 }
