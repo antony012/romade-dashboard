@@ -363,6 +363,7 @@ export default function UsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<UserFilter>("all");
   const [query, setQuery] = useState("");
+  const [referrerFilter, setReferrerFilter] = useState("");
   const [editing, setEditing] = useState<User | null>(null);
   const [notesUser, setNotesUser] = useState<User | null>(null);
   const [notesDraft, setNotesDraft] = useState("");
@@ -448,10 +449,28 @@ export default function UsersPage() {
     [appUsers],
   );
 
+  const referrerChoices = useMemo(() => {
+    return users
+      .filter(
+        (user) => isReferrerOnly(user) || (user.referralCount ?? 0) > 0,
+      )
+      .sort((a, b) =>
+        userDisplayName(a).localeCompare(userDisplayName(b), "es"),
+      );
+  }, [users]);
+
   const visibleUsers = useMemo(() => {
     const q = query.trim().toLowerCase();
     return appUsers.filter((user) => {
       if (!matchesName(user, q)) return false;
+      if (referrerFilter === "none" && user.referredById) return false;
+      if (
+        referrerFilter &&
+        referrerFilter !== "none" &&
+        user.referredById !== referrerFilter
+      ) {
+        return false;
+      }
       const active = hasActiveMembership(user);
       if (filter === "new") return isNewUser(user);
       if (filter === "active") return active;
@@ -464,20 +483,33 @@ export default function UsersPage() {
       if (filter === "referred") return Boolean(user.referredById);
       return true;
     });
-  }, [appUsers, filter, query]);
+  }, [appUsers, filter, query, referrerFilter]);
 
   const tableRows = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (filter === "referrals") {
       const tree = flattenReferralTree(appUsers);
-      if (!q) return tree;
+      const underReferrer =
+        referrerFilter && referrerFilter !== "none"
+          ? descendantIds(users, referrerFilter)
+          : null;
       const keep = new Set<string>();
       const byId = new Map(appUsers.map((user) => [user.id, user]));
       for (const row of tree) {
-        if (!matchesName(row.user, q)) continue;
+        if (
+          referrerFilter === "none" &&
+          row.user.referredById
+        ) {
+          continue;
+        }
+        if (underReferrer && !underReferrer.has(row.user.id)) continue;
+        if (q && !matchesName(row.user, q)) continue;
         keep.add(row.user.id);
         let parentId = row.user.referredById ?? null;
         while (parentId) {
+          if (underReferrer && !underReferrer.has(parentId) && parentId !== referrerFilter) {
+            break;
+          }
           keep.add(parentId);
           parentId = byId.get(parentId)?.referredById ?? null;
         }
@@ -495,7 +527,7 @@ export default function UsersPage() {
         );
       })
       .map((user) => ({ user, depth: 0 }));
-  }, [filter, appUsers, query, visibleUsers]);
+  }, [filter, appUsers, query, visibleUsers, referrerFilter, users]);
 
   const visibleIds = useMemo(
     () => tableRows.map((row) => row.user.id),
@@ -999,7 +1031,7 @@ export default function UsersPage() {
       />
 
       <div className="mb-5 flex flex-col gap-3 rounded-3xl border border-zinc-200/80 bg-white/70 p-4 shadow-sm shadow-zinc-950/5 backdrop-blur sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
-        <div className="flex w-full flex-col gap-3 sm:max-w-xl sm:flex-row">
+        <div className="flex w-full flex-col gap-3 lg:max-w-none lg:flex-row">
           <label className="block w-full space-y-1.5 sm:max-w-xs">
             <span className="text-sm font-medium text-slate-700">Buscar</span>
             <span className="relative block">
@@ -1030,6 +1062,25 @@ export default function UsersPage() {
               <option value="referrals">Árbol de referidos</option>
               <option value="referrers">Referentes</option>
               <option value="referred">Referidos</option>
+            </select>
+          </label>
+          <label className="block w-full space-y-1.5 sm:max-w-xs">
+            <span className="text-sm font-medium text-slate-700">Referente</span>
+            <select
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400"
+              value={referrerFilter}
+              onChange={(e) => setReferrerFilter(e.target.value)}
+            >
+              <option value="">Todos</option>
+              <option value="none">Sin referente</option>
+              {referrerChoices.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {userDisplayName(user)}
+                  {(user.referralCount ?? 0) > 0
+                    ? ` · ${user.referralCount}`
+                    : ""}
+                </option>
+              ))}
             </select>
           </label>
         </div>
