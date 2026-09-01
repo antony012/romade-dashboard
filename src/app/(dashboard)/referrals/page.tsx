@@ -197,15 +197,15 @@ export default function ReferralsPage() {
     }
   }
 
-  function exportSheets(list: User[]) {
+  async function exportSheets(list: User[]) {
     const sheets = list.map((referrer) => buildReferrerSheet(users, referrer));
-    const result = openReferrerSheets(sheets);
+    const result = await openReferrerSheets(sheets);
     if (result === "opened") {
-      toast("Ficha lista. Usa Imprimir o guardar PDF");
+      toast("Ficha lista. El responsable marca Sí o No, guarda y te la envía");
       return;
     }
     if (result === "downloaded") {
-      toast("Se descargó la ficha. Ábrela y guarda como PDF");
+      toast("Se descargó la ficha. Ábrela, marca y pulsa Guardar ficha");
       return;
     }
     toast("No se pudo exportar la ficha", "error");
