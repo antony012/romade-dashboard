@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import { formatDate, formatMoney, userDisplayName } from "@/lib/format";
+import { formatDate, formatMoney, isNewUser, userDisplayName } from "@/lib/format";
 import type { HomeResponse } from "@/lib/types";
 import { useToast } from "@/context/ToastContext";
 import { Button } from "@/components/ui/Button";
@@ -160,14 +160,19 @@ export default function HomePage() {
             <EmptyState message="Sin usuarios recientes" />
           ) : (
             <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              {recentUsers.map((user) => (
+              {recentUsers.map((user) => {
+                const isNew = isNewUser(user);
+                return (
                 <div
                   key={user.id}
-                  className="flex items-center justify-between border-b border-slate-100 py-2 last:border-0"
+                  className={`flex items-center justify-between border-b border-slate-100 py-2 last:border-0 ${
+                    isNew ? "-mx-2 rounded-xl bg-sky-100 px-2 ring-1 ring-sky-300" : ""
+                  }`}
                 >
                   <div>
-                    <p className="text-sm font-medium text-slate-900">
+                    <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900">
                       {userDisplayName(user)}
+                      {isNew ? <Badge tone="info">Nuevo usuario</Badge> : null}
                     </p>
                     <p className="text-xs text-slate-500">
                       {user.email ?? user.sub ?? "—"}
@@ -182,7 +187,8 @@ export default function HomePage() {
                     </p>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>

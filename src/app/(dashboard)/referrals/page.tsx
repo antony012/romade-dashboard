@@ -2,9 +2,16 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import { formatDate, userDisplayName } from "@/lib/format";
+import { userDisplayName } from "@/lib/format";
 import { childrenOf, descendantIds, isReferrerOnly } from "@/lib/referrals";
-import type { Membership, User } from "@/lib/types";
+import {
+  buildReferrerSheet,
+  hasActiveMembership,
+  membershipLabel,
+  openReferrerSheets,
+  renewalLabel,
+} from "@/lib/referrer-sheet";
+import type { User } from "@/lib/types";
 import { useToast } from "@/context/ToastContext";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -16,10 +23,6 @@ import {
   LoadingState,
   PageHeader,
 } from "@/components/ui/States";
-
-function hasActiveMembership(user: User): boolean {
-  return (user.memberships ?? []).some((m: Membership) => m.isCurrentlyActive);
-}
 
 export default function ReferralsPage() {
   const { toast } = useToast();
@@ -194,6 +197,14 @@ export default function ReferralsPage() {
     }
   }
 
+  function exportSheets(list: User[]) {
+    const sheets = list.map((referrer) => buildReferrerSheet(users, referrer));
+    const opened = openReferrerSheets(sheets);
+    if (!opened) {
+      toast("Permite ventanas emergentes para exportar", "error");
+    }
+  }
+
   if (loading) return <LoadingState />;
   if (error) return <ErrorState message={error} />;
 
@@ -203,7 +214,17 @@ export default function ReferralsPage() {
     <div>
       <PageHeader
         title="Referidos"
-        description="Anida usuarios bajo quien los trajo y controla cuántos trajo cada persona"
+        description="Cada responsable gestiona a los suyos: nombre, correo, membresía y si renuevan. Sin fechas."
+        actions={
+          referrers.length > 0 ? (
+            <Button
+              variant="secondary"
+              onClick={() => exportSheets(referrers)}
+            >
+              Exportar todos
+            </Button>
+          ) : undefined
+        }
       />
 
       <div className="mb-5 grid grid-cols-3 gap-2 sm:gap-3">
@@ -248,6 +269,9 @@ export default function ReferralsPage() {
           {referrers.map((referrer) => {
             const kids = childrenOf(users, referrer.id);
             const activeKids = kids.filter(hasActiveMembership).length;
+            const renewedKids = kids.filter(
+              (child) => renewalLabel(child) === "Sí",
+            ).length;
             const expanded = openId === referrer.id;
             return (
               <section
@@ -280,10 +304,14 @@ export default function ReferralsPage() {
                       {referrer.referralCount === 1 ? "" : "s"}
                     </Badge>
                     <Badge tone={activeKids > 0 ? "success" : "neutral"}>
-                      {activeKids} activo{activeKids === 1 ? "" : "s"}
+                      {activeKids} activa{activeKids === 1 ? "" : "s"}
+                    </Badge>
+                    <Badge tone={renewedKids > 0 ? "success" : "neutral"}>
+                      {renewedKids} renov
+                      {renewedKids === 1 ? "ó" : "aron"}
                     </Badge>
                   </div>
-                  <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+                  <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:w-auto sm:flex-wrap">
                     <Button
                       variant="secondary"
                       className="w-full sm:w-auto"
@@ -294,6 +322,13 @@ export default function ReferralsPage() {
                       }
                     >
                       {expanded ? "Ocultar" : "Ver"}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      className="w-full sm:w-auto"
+                      onClick={() => exportSheets([referrer])}
+                    >
+                      Exportar
                     </Button>
                     <Button
                       variant="secondary"
@@ -315,47 +350,73 @@ export default function ReferralsPage() {
                         Sin referidos directos.
                       </p>
                     ) : (
-                      <ul>
-                        {kids.map((child) => (
-                          <li
-                            key={child.id}
-                            className="border-t border-zinc-50 px-4 py-3 first:border-t-0"
-                          >
-                            <div className="min-w-0">
-                              <p className="break-words font-medium text-zinc-900">
-                                {userDisplayName(child)}
-                              </p>
-                              <p className="break-all text-sm text-zinc-500">
-                                {child.email ?? child.phone ?? "—"}
-                              </p>
-                              <p className="mt-0.5 text-xs text-zinc-400">
-                                {formatDate(child.createdAt)}
-                              </p>
-                            </div>
-                            <div className="mt-3 flex flex-wrap items-center gap-2">
-                              {hasActiveMembership(child) ? (
-                                <Badge tone="success">Activa</Badge>
-                              ) : (
-                                <Badge tone="neutral">Sin activa</Badge>
-                              )}
-                              {(child.referralCount ?? 0) > 0 ? (
-                                <Badge tone="neutral">
-                                  {child.referralCount} referido
-                                  {child.referralCount === 1 ? "" : "s"}
-                                </Badge>
-                              ) : null}
-                              <Button
-                                variant="ghost"
-                                className="ml-auto"
-                                onClick={() => void onRemove(child)}
-                                disabled={saving}
-                              >
-                                Quitar
-                              </Button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[32rem] text-left text-sm">
+                          <thead>
+                            <tr className="border-t border-zinc-100 text-[11px] uppercase tracking-wide text-zinc-400">
+                              <th className="px-4 py-2 font-medium">Nombre</th>
+                              <th className="px-4 py-2 font-medium">Correo</th>
+                              <th className="px-4 py-2 font-medium">
+                                Membresía
+                              </th>
+                              <th className="px-4 py-2 font-medium">Renueva</th>
+                              <th className="px-4 py-2 font-medium" />
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {kids.map((child) => {
+                              const membership = membershipLabel(child);
+                              const renewal = renewalLabel(child);
+                              return (
+                                <tr
+                                  key={child.id}
+                                  className="border-t border-zinc-50"
+                                >
+                                  <td className="px-4 py-3 font-medium text-zinc-900">
+                                    {userDisplayName(child)}
+                                  </td>
+                                  <td className="break-all px-4 py-3 text-zinc-500">
+                                    {child.email ?? "—"}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <Badge
+                                      tone={
+                                        membership === "Activa"
+                                          ? "success"
+                                          : "neutral"
+                                      }
+                                    >
+                                      {membership}
+                                    </Badge>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <Badge
+                                      tone={
+                                        renewal === "Sí"
+                                          ? "success"
+                                          : renewal === "No"
+                                            ? "warning"
+                                            : "neutral"
+                                      }
+                                    >
+                                      {renewal}
+                                    </Badge>
+                                  </td>
+                                  <td className="px-4 py-3 text-right">
+                                    <Button
+                                      variant="ghost"
+                                      onClick={() => void onRemove(child)}
+                                      disabled={saving}
+                                    >
+                                      Quitar
+                                    </Button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     )}
                   </div>
                 ) : null}

@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import { formatDate, userDisplayName } from "@/lib/format";
+import { formatDate, isNewUser, userDisplayName } from "@/lib/format";
 import {
   descendantIds,
   flattenReferralTree,
@@ -24,6 +24,7 @@ import { Table } from "@/components/ui/Table";
 
 type UserFilter =
   | "all"
+  | "new"
   | "active"
   | "inactive"
   | "notes"
@@ -32,6 +33,22 @@ type UserFilter =
   | "referrals"
   | "referrers"
   | "referred";
+
+function userRowTone(user: User, prueba: boolean): string {
+  if (user.blacklisted) return "bg-red-50 hover:bg-red-100/80";
+  if (isNewUser(user)) {
+    return "bg-sky-100 ring-1 ring-inset ring-sky-300 hover:bg-sky-200/70";
+  }
+  if (prueba) return "bg-amber-100 hover:bg-amber-200/80";
+  return "hover:bg-slate-50";
+}
+
+function userCardTone(user: User, prueba: boolean): string {
+  if (user.blacklisted) return "bg-red-50";
+  if (isNewUser(user)) return "bg-sky-100 ring-1 ring-sky-300";
+  if (prueba) return "bg-amber-100";
+  return "bg-white/80";
+}
 
 function activeMemberships(user: User): Membership[] {
   return (user.memberships ?? []).filter((m) => m.isCurrentlyActive);
@@ -330,14 +347,41 @@ export default function UsersPage() {
     void load();
   }, []);
 
+  const modalOpen = Boolean(
+    editing ||
+      notesUser ||
+      membershipUser ||
+      cancelUser ||
+      deleteUser ||
+      blacklistUser ||
+      referUser ||
+      jwtUser,
+  );
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (modalOpen) return;
+      api
+        .listUsers()
+        .then(setUsers)
+        .catch(() => undefined);
+    }, 20_000);
+    return () => window.clearInterval(timer);
+  }, [modalOpen]);
+
   const appUsers = useMemo(
     () => users.filter((user) => !isReferrerOnly(user)),
     [users],
+  );
+  const newUserCount = useMemo(
+    () => appUsers.filter(isNewUser).length,
+    [appUsers],
   );
 
   const visibleUsers = useMemo(() => {
     return appUsers.filter((user) => {
       const active = hasActiveMembership(user);
+      if (filter === "new") return isNewUser(user);
       if (filter === "active") return active;
       if (filter === "inactive") return !active;
       if (filter === "notes") return Boolean(user.notes?.trim());
@@ -354,7 +398,17 @@ export default function UsersPage() {
     if (filter === "referrals") {
       return flattenReferralTree(appUsers);
     }
-    return visibleUsers.map((user) => ({ user, depth: 0 }));
+    return visibleUsers
+      .slice()
+      .sort((a, b) => {
+        const newA = isNewUser(a) ? 1 : 0;
+        const newB = isNewUser(b) ? 1 : 0;
+        if (newA !== newB) return newB - newA;
+        return (
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      })
+      .map((user) => ({ user, depth: 0 }));
   }, [filter, appUsers, visibleUsers]);
 
   const referrerOptions = useMemo(() => {
@@ -723,6 +777,7 @@ export default function UsersPage() {
             onChange={(e) => setFilter(e.target.value as UserFilter)}
           >
             <option value="all">Todos</option>
+            <option value="new">Nuevos usuarios</option>
             <option value="active">Con membresía activa</option>
             <option value="inactive">Sin membresía activa</option>
             <option value="notes">Con observaciones</option>
@@ -734,6 +789,11 @@ export default function UsersPage() {
           </select>
         </label>
         <div className="flex flex-wrap items-center gap-2">
+          {newUserCount > 0 ? (
+            <div className="rounded-full bg-sky-100 px-3 py-1.5 text-sm font-medium text-sky-900 ring-1 ring-sky-300">
+              {newUserCount} nuevo{newUserCount === 1 ? "" : "s"}
+            </div>
+          ) : null}
           <div className="rounded-full bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 ring-1 ring-amber-200">
             {visibleUsers.length} de {appUsers.length} usuarios
           </div>
@@ -756,6 +816,7 @@ export default function UsersPage() {
               const prueba = isPruebaNote(user.notes);
               const verified = user.verified === true;
               const blacklisted = user.blacklisted === true;
+              const isNew = isNewUser(user);
               const referrer =
                 user.referredBy ??
                 users.find((item) => item.id === user.referredById) ??
@@ -763,13 +824,7 @@ export default function UsersPage() {
               return (
                 <article
                   key={user.id}
-                  className={`rounded-3xl border border-zinc-200/80 p-4 shadow-sm ${
-                    blacklisted
-                      ? "bg-red-50"
-                      : prueba
-                        ? "bg-amber-100"
-                        : "bg-white/80"
-                  }`}
+                  className={`rounded-3xl border border-zinc-200/80 p-4 shadow-sm ${userCardTone(user, prueba)}`}
                   style={{ marginLeft: `${Math.min(depth, 3) * 0.75}rem` }}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -786,6 +841,9 @@ export default function UsersPage() {
                         <span className="break-words">
                           {userDisplayName(user)}
                         </span>
+                        {isNew ? (
+                          <Badge tone="info">Nuevo usuario</Badge>
+                        ) : null}
                       </p>
                       <p className="mt-1 break-all text-sm text-slate-500">
                         {user.email ?? user.phone ?? "Sin contacto"}
@@ -870,6 +928,7 @@ export default function UsersPage() {
             const prueba = isPruebaNote(user.notes);
             const verified = user.verified === true;
             const blacklisted = user.blacklisted === true;
+            const isNew = isNewUser(user);
             const referrer =
               user.referredBy ??
               users.find((item) => item.id === user.referredById) ??
@@ -877,13 +936,7 @@ export default function UsersPage() {
             return (
               <tr
                 key={user.id}
-                className={
-                  blacklisted
-                    ? "bg-red-50 hover:bg-red-100/80"
-                    : prueba
-                      ? "bg-amber-100 hover:bg-amber-200/80"
-                      : "hover:bg-slate-50"
-                }
+                className={userRowTone(user, prueba)}
               >
                 <td className="px-4 py-3 font-medium text-slate-900">
                   <span
@@ -904,6 +957,9 @@ export default function UsersPage() {
                       </span>
                     ) : null}
                     <span>{userDisplayName(user)}</span>
+                    {isNew ? (
+                      <Badge tone="info">Nuevo usuario</Badge>
+                    ) : null}
                     {(user.referralCount ?? 0) > 0 ? (
                       <Badge tone="neutral">
                         {user.referralCount} referido

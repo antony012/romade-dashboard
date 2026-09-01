@@ -40,6 +40,18 @@ export function userDisplayName(user?: {
   return "Sesión sin perfil";
 }
 
+const NEW_USER_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function isNewUser(user?: {
+  createdAt?: string | null;
+  isReferrerProfile?: boolean;
+} | null): boolean {
+  if (!user?.createdAt || user.isReferrerProfile) return false;
+  const created = new Date(user.createdAt).getTime();
+  if (Number.isNaN(created)) return false;
+  return Date.now() - created < NEW_USER_MS;
+}
+
 export function membershipUserHint(user?: {
   email?: string | null;
   dasherId?: string | null;
