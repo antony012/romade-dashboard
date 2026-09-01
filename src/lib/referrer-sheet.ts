@@ -246,12 +246,12 @@ function printDocument(title: string, fileName: string, logo: string, body: stri
       ${brand}
       <div>
         <h1>ROMADE</h1>
-        <p>Ficha de referidos. Márcalos aquí: no usa internet ni queda rastro en el panel.</p>
+        <p>Ficha de referidos</p>
       </div>
     </header>
     <p class="note">
       Toca <strong>Sí, renueva</strong> o <strong>No</strong> en cada persona. Luego pulsa
-      <strong>Guardar ficha</strong> y envía este archivo. Tus marcas quedan en el archivo, no en un servidor.
+      <strong>Guardar ficha</strong> y envía este archivo.
     </p>
     ${body}
   </div>
