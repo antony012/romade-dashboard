@@ -113,6 +113,28 @@ function pruebaNotes(current: string, enable: boolean): string {
     .trim();
 }
 
+function matchesName(user: User, query: string): boolean {
+  if (!query) return true;
+  return userDisplayName(user).toLowerCase().includes(query);
+}
+
+function SearchIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
 function CrownIcon({ className = "h-4 w-4" }: { className?: string }) {
   return (
     <svg
@@ -340,6 +362,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<UserFilter>("all");
+  const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<User | null>(null);
   const [notesUser, setNotesUser] = useState<User | null>(null);
   const [notesDraft, setNotesDraft] = useState("");
@@ -426,7 +449,9 @@ export default function UsersPage() {
   );
 
   const visibleUsers = useMemo(() => {
+    const q = query.trim().toLowerCase();
     return appUsers.filter((user) => {
+      if (!matchesName(user, q)) return false;
       const active = hasActiveMembership(user);
       if (filter === "new") return isNewUser(user);
       if (filter === "active") return active;
@@ -439,11 +464,25 @@ export default function UsersPage() {
       if (filter === "referred") return Boolean(user.referredById);
       return true;
     });
-  }, [appUsers, filter]);
+  }, [appUsers, filter, query]);
 
   const tableRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
     if (filter === "referrals") {
-      return flattenReferralTree(appUsers);
+      const tree = flattenReferralTree(appUsers);
+      if (!q) return tree;
+      const keep = new Set<string>();
+      const byId = new Map(appUsers.map((user) => [user.id, user]));
+      for (const row of tree) {
+        if (!matchesName(row.user, q)) continue;
+        keep.add(row.user.id);
+        let parentId = row.user.referredById ?? null;
+        while (parentId) {
+          keep.add(parentId);
+          parentId = byId.get(parentId)?.referredById ?? null;
+        }
+      }
+      return tree.filter((row) => keep.has(row.user.id));
     }
     return visibleUsers
       .slice()
@@ -456,7 +495,7 @@ export default function UsersPage() {
         );
       })
       .map((user) => ({ user, depth: 0 }));
-  }, [filter, appUsers, visibleUsers]);
+  }, [filter, appUsers, query, visibleUsers]);
 
   const visibleIds = useMemo(
     () => tableRows.map((row) => row.user.id),
@@ -960,25 +999,40 @@ export default function UsersPage() {
       />
 
       <div className="mb-5 flex flex-col gap-3 rounded-3xl border border-zinc-200/80 bg-white/70 p-4 shadow-sm shadow-zinc-950/5 backdrop-blur sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
-        <label className="block w-full space-y-1.5 sm:min-w-[16rem] sm:max-w-sm">
-          <span className="text-sm font-medium text-slate-700">Filtrar</span>
-          <select
-            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value as UserFilter)}
-          >
-            <option value="all">Todos</option>
-            <option value="new">Nuevos usuarios</option>
-            <option value="active">Con membresía activa</option>
-            <option value="inactive">Sin membresía activa</option>
-            <option value="notes">Con observaciones</option>
-            <option value="verified">Verificados (corona)</option>
-            <option value="blacklisted">Lista negra</option>
-            <option value="referrals">Árbol de referidos</option>
-            <option value="referrers">Referentes</option>
-            <option value="referred">Referidos</option>
-          </select>
-        </label>
+        <div className="flex w-full flex-col gap-3 sm:max-w-xl sm:flex-row">
+          <label className="block w-full space-y-1.5 sm:max-w-xs">
+            <span className="text-sm font-medium text-slate-700">Buscar</span>
+            <span className="relative block">
+              <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Nombre"
+                className="min-h-11 w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm outline-none placeholder:text-zinc-400 focus:ring-2 focus:ring-amber-400"
+              />
+            </span>
+          </label>
+          <label className="block w-full space-y-1.5 sm:max-w-xs">
+            <span className="text-sm font-medium text-slate-700">Filtrar</span>
+            <select
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-amber-400"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value as UserFilter)}
+            >
+              <option value="all">Todos</option>
+              <option value="new">Nuevos usuarios</option>
+              <option value="active">Con membresía activa</option>
+              <option value="inactive">Sin membresía activa</option>
+              <option value="notes">Con observaciones</option>
+              <option value="verified">Verificados (corona)</option>
+              <option value="blacklisted">Lista negra</option>
+              <option value="referrals">Árbol de referidos</option>
+              <option value="referrers">Referentes</option>
+              <option value="referred">Referidos</option>
+            </select>
+          </label>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           {newUserCount > 0 ? (
             <div className="rounded-full bg-sky-100 px-3 py-1.5 text-sm font-medium text-sky-900 ring-1 ring-sky-300">
@@ -1093,7 +1147,13 @@ export default function UsersPage() {
       ) : null}
 
       {tableRows.length === 0 ? (
-        <EmptyState message="No hay usuarios en este filtro" />
+        <EmptyState
+          message={
+            query.trim()
+              ? "Ningún usuario coincide con ese nombre"
+              : "No hay usuarios en este filtro"
+          }
+        />
       ) : (
         <>
           <div className="space-y-3 md:hidden">
