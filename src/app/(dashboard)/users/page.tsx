@@ -71,6 +71,48 @@ function isPruebaNote(notes?: string | null): boolean {
   return /\bprueba\b/i.test(notes?.trim() ?? "");
 }
 
+function SelectBox({
+  checked,
+  indeterminate = false,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  indeterminate?: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate;
+  }, [indeterminate]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      aria-label={label}
+      checked={checked}
+      onChange={(event) => onChange(event.target.checked)}
+      className="h-4 w-4 shrink-0 rounded border-zinc-300 accent-zinc-950"
+    />
+  );
+}
+
+function pruebaNotes(current: string, enable: boolean): string {
+  if (enable) {
+    return isPruebaNote(current)
+      ? current
+      : current
+        ? `${current} · Prueba`
+        : "Prueba";
+  }
+  return current
+    .replace(/\bprueba\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[·\s]+|[·\s]+$/g, "")
+    .trim();
+}
+
 function CrownIcon({ className = "h-4 w-4" }: { className?: string }) {
   return (
     <svg
@@ -321,6 +363,10 @@ export default function UsersPage() {
   const [membershipDays, setMembershipDays] = useState("7");
   const [membershipPrice, setMembershipPrice] = useState("80");
   const [saving, setSaving] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulk, setBulk] = useState<
+    null | "membership" | "referrer" | "blacklist" | "unblacklist" | "cancel" | "delete"
+  >(null);
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
@@ -355,7 +401,8 @@ export default function UsersPage() {
       deleteUser ||
       blacklistUser ||
       referUser ||
-      jwtUser,
+      jwtUser ||
+      bulk,
   );
 
   useEffect(() => {
@@ -411,10 +458,53 @@ export default function UsersPage() {
       .map((user) => ({ user, depth: 0 }));
   }, [filter, appUsers, visibleUsers]);
 
+  const visibleIds = useMemo(
+    () => tableRows.map((row) => row.user.id),
+    [tableRows],
+  );
+  const selectedUsers = useMemo(
+    () => users.filter((user) => selected.has(user.id)),
+    [selected, users],
+  );
+  const allVisibleSelected =
+    visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+  const someVisibleSelected = visibleIds.some((id) => selected.has(id));
+
+  function toggleSelected(id: string, checked: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function toggleAllVisible(checked: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        for (const id of visibleIds) next.add(id);
+      } else {
+        for (const id of visibleIds) next.delete(id);
+      }
+      return next;
+    });
+  }
+
   const referrerOptions = useMemo(() => {
-    if (!referUser) return [];
-    const blocked = descendantIds(users, referUser.id);
-    blocked.add(referUser.id);
+    const anchor = referUser;
+    const blocked = new Set<string>();
+    if (anchor) {
+      for (const id of descendantIds(users, anchor.id)) blocked.add(id);
+      blocked.add(anchor.id);
+    } else if (bulk === "referrer") {
+      for (const user of selectedUsers) {
+        blocked.add(user.id);
+        for (const id of descendantIds(users, user.id)) blocked.add(id);
+      }
+    } else {
+      return [];
+    }
     const query = referrerQuery.trim().toLowerCase();
     return users.filter((user) => {
       if (blocked.has(user.id)) return false;
@@ -428,7 +518,7 @@ export default function UsersPage() {
         .toLowerCase();
       return haystack.includes(query);
     });
-  }, [referUser, referrerQuery, users]);
+  }, [bulk, referUser, referrerQuery, selectedUsers, users]);
 
   function openEdit(user: User) {
     setEditing(user);
@@ -538,7 +628,8 @@ export default function UsersPage() {
 
   async function onAssignReferrer(e: FormEvent) {
     e.preventDefault();
-    if (!referUser) return;
+    const targets = bulk === "referrer" ? selectedUsers : referUser ? [referUser] : [];
+    if (!targets.length) return;
     setSaving(true);
     try {
       let nextReferrerId = referrerId || null;
@@ -556,17 +647,22 @@ export default function UsersPage() {
         });
         nextReferrerId = created.id;
       }
-      await api.updateUser(referUser.id, {
-        referredById: nextReferrerId,
-      });
+      let ok = 0;
+      for (const target of targets) {
+        if (nextReferrerId && target.id === nextReferrerId) continue;
+        await api.updateUser(target.id, { referredById: nextReferrerId });
+        ok += 1;
+      }
       setUsers(await api.listUsers());
       setReferUser(null);
+      setBulk(null);
+      setSelected(new Set());
       toast(
         nextReferrerId
           ? creatingReferrer
-            ? "Referente creado y asignado"
-            : "Referente asignado"
-          : "Se quitó el referente de este usuario",
+            ? `Referente creado y asignado a ${ok}`
+            : `Referente asignado a ${ok}`
+          : `Se quitó el referente de ${ok}`,
       );
     } catch (err) {
       toast(
@@ -582,14 +678,7 @@ export default function UsersPage() {
 
   async function onTogglePrueba(user: User) {
     const current = user.notes?.trim() ?? "";
-    const nextNotes = isPruebaNote(current)
-      ? current
-          .replace(/\bprueba\b/gi, "")
-          .replace(/\s{2,}/g, " ")
-          .trim()
-      : current
-        ? `${current} · Prueba`
-        : "Prueba";
+    const nextNotes = pruebaNotes(current, !isPruebaNote(current));
 
     setSaving(true);
     try {
@@ -658,14 +747,19 @@ export default function UsersPage() {
 
   async function onCreateMembership(e: FormEvent) {
     e.preventDefault();
-    if (!membershipUser) return;
+    const targets =
+      bulk === "membership"
+        ? selectedUsers
+        : membershipUser
+          ? [membershipUser]
+          : [];
+    if (!targets.length) return;
 
-    if (hasActiveMembership(membershipUser)) {
-      toast("El usuario ya tiene una membresía activa", "error");
-      return;
-    }
-    if (membershipUser.blacklisted) {
-      toast("Este usuario está en lista negra", "error");
+    const eligible = targets.filter(
+      (user) => !hasActiveMembership(user) && !user.blacklisted,
+    );
+    if (!eligible.length) {
+      toast("Ninguno de los seleccionados puede recibir membresía", "error");
       return;
     }
 
@@ -678,17 +772,34 @@ export default function UsersPage() {
 
     setSaving(true);
     try {
-      await api.createMembership({
-        userId: membershipUser.id,
-        days: Number.isFinite(days) && days > 0 ? days : undefined,
-        price,
-      });
-      const refreshed = await api.getUser(membershipUser.id);
-      setUsers((prev) =>
-        prev.map((u) => (u.id === refreshed.id ? refreshed : u)),
-      );
+      let ok = 0;
+      let fail = 0;
+      for (const user of eligible) {
+        try {
+          await api.createMembership({
+            userId: user.id,
+            days: Number.isFinite(days) && days > 0 ? days : undefined,
+            price,
+          });
+          ok += 1;
+        } catch {
+          fail += 1;
+        }
+      }
+      setUsers(await api.listUsers());
       setMembershipUser(null);
-      toast("Membresía agregada");
+      setBulk(null);
+      setSelected(new Set());
+      const skipped = targets.length - eligible.length;
+      toast(
+        fail
+          ? `${ok} membresías, ${fail} fallaron${skipped ? `, ${skipped} omitidos` : ""}`
+          : skipped
+            ? `${ok} membresías. ${skipped} se omitieron`
+            : ok === 1
+              ? "Membresía agregada"
+              : `${ok} membresías agregadas`,
+      );
     } catch (err) {
       toast(
         err instanceof ApiError ? err.message : "Error al crear membresía",
@@ -758,6 +869,86 @@ export default function UsersPage() {
     }
   }
 
+  async function runBulk(
+    work: (user: User) => Promise<unknown>,
+    done: string,
+  ) {
+    if (!selectedUsers.length) return;
+    setSaving(true);
+    let ok = 0;
+    let fail = 0;
+    try {
+      for (const user of selectedUsers) {
+        try {
+          await work(user);
+          ok += 1;
+        } catch {
+          fail += 1;
+        }
+      }
+      setUsers(await api.listUsers());
+      setSelected(new Set());
+      setBulk(null);
+      toast(fail ? `${ok} listos, ${fail} no se pudieron` : done);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onBulkBlacklist(next: boolean) {
+    await runBulk(
+      (user) => api.updateUser(user.id, { blacklisted: next }),
+      next ? "Usuarios en lista negra" : "Quitados de lista negra",
+    );
+  }
+
+  async function onBulkCancel() {
+    await runBulk(async (user) => {
+      const memberships = activeMemberships(user);
+      await Promise.all(
+        memberships.map((membership) =>
+          api.cancelMembership(membership.id, {
+            reason: "cancelled_for_non_payment",
+          }),
+        ),
+      );
+    }, "Acceso cancelado");
+  }
+
+  async function onBulkDelete() {
+    const removable = selectedUsers.filter((user) => !hasActiveMembership(user));
+    if (!removable.length) {
+      toast("Cancela el acceso antes de eliminar", "error");
+      return;
+    }
+    setSaving(true);
+    let ok = 0;
+    let fail = 0;
+    try {
+      for (const user of removable) {
+        try {
+          await api.deleteUser(user.id);
+          ok += 1;
+        } catch {
+          fail += 1;
+        }
+      }
+      setUsers(await api.listUsers());
+      setSelected(new Set());
+      setBulk(null);
+      const skipped = selectedUsers.length - removable.length;
+      toast(
+        fail
+          ? `${ok} eliminados, ${fail} no`
+          : skipped
+            ? `${ok} eliminados. ${skipped} tenían membresía activa`
+            : `${ok} eliminados`,
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (loading) return <LoadingState />;
   if (error) return <ErrorState message={error} />;
 
@@ -805,11 +996,116 @@ export default function UsersPage() {
         </div>
       </div>
 
+      {selected.size > 0 ? (
+        <div className="sticky bottom-3 z-20 mb-4 rounded-3xl border border-zinc-900 bg-zinc-950 px-4 py-3 text-white shadow-lg shadow-zinc-950/20">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <p className="text-sm font-medium">
+              {selected.size} seleccionado{selected.size === 1 ? "" : "s"}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                disabled={saving}
+                onClick={() =>
+                  void runBulk(
+                    (user) => api.updateUser(user.id, { verified: true }),
+                    "Corona puesta",
+                  )
+                }
+              >
+                Corona
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={saving}
+                onClick={() =>
+                  void runBulk(
+                    (user) =>
+                      api.updateUser(user.id, {
+                        notes: pruebaNotes(user.notes?.trim() ?? "", true),
+                      }),
+                    "Marcados como Prueba",
+                  )
+                }
+              >
+                Prueba
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={saving}
+                onClick={() => {
+                  setMembershipDays("7");
+                  setMembershipPrice("80");
+                  setBulk("membership");
+                }}
+              >
+                Membresía
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={saving}
+                onClick={() => {
+                  setReferrerId("");
+                  setReferrerQuery("");
+                  setCreatingReferrer(false);
+                  setNewReferrer({
+                    firstName: "",
+                    lastName: "",
+                    phone: "",
+                    email: "",
+                  });
+                  setBulk("referrer");
+                }}
+              >
+                Referente
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={saving}
+                onClick={() => setBulk("blacklist")}
+              >
+                Lista negra
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={saving}
+                onClick={() => setBulk("cancel")}
+              >
+                Cancelar acceso
+              </Button>
+              <Button
+                variant="danger"
+                disabled={saving}
+                onClick={() => setBulk("delete")}
+              >
+                Eliminar
+              </Button>
+              <Button
+                variant="ghost"
+                className="text-zinc-200 hover:bg-white/10"
+                onClick={() => setSelected(new Set())}
+              >
+                Quitar selección
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {tableRows.length === 0 ? (
         <EmptyState message="No hay usuarios en este filtro" />
       ) : (
         <>
           <div className="space-y-3 md:hidden">
+            <label className="flex items-center gap-2 px-1 text-sm text-zinc-600">
+              <SelectBox
+                checked={allVisibleSelected}
+                indeterminate={someVisibleSelected && !allVisibleSelected}
+                onChange={toggleAllVisible}
+                label="Seleccionar todos"
+              />
+              Seleccionar todos
+            </label>
             {tableRows.map(({ user, depth }) => {
               const active = hasActiveMembership(user);
               const pending = hasPendingMembership(user);
@@ -828,7 +1124,13 @@ export default function UsersPage() {
                   style={{ marginLeft: `${Math.min(depth, 3) * 0.75}rem` }}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                    <label className="flex min-w-0 flex-1 items-start gap-3">
+                      <SelectBox
+                        checked={selected.has(user.id)}
+                        onChange={(checked) => toggleSelected(user.id, checked)}
+                        label={`Seleccionar ${userDisplayName(user)}`}
+                      />
+                      <div className="min-w-0">
                       <p className="flex flex-wrap items-center gap-2 font-medium text-slate-900">
                         {depth > 0 ? (
                           <span className="text-slate-300" aria-hidden>
@@ -848,8 +1150,9 @@ export default function UsersPage() {
                       <p className="mt-1 break-all text-sm text-slate-500">
                         {user.email ?? user.phone ?? "Sin contacto"}
                       </p>
+                      </div>
+                    </label>
                     </div>
-                  </div>
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {active ? (
                       <Badge tone="success">Activa</Badge>
@@ -912,6 +1215,13 @@ export default function UsersPage() {
           <div className="hidden md:block">
         <Table
           headers={[
+            <SelectBox
+              key="all"
+              checked={allVisibleSelected}
+              indeterminate={someVisibleSelected && !allVisibleSelected}
+              onChange={toggleAllVisible}
+              label="Seleccionar todos"
+            />,
             "Nombre",
             "Email",
             "Teléfono",
@@ -938,6 +1248,13 @@ export default function UsersPage() {
                 key={user.id}
                 className={userRowTone(user, prueba)}
               >
+                <td className="px-4 py-3">
+                  <SelectBox
+                    checked={selected.has(user.id)}
+                    onChange={(checked) => toggleSelected(user.id, checked)}
+                    label={`Seleccionar ${userDisplayName(user)}`}
+                  />
+                </td>
                 <td className="px-4 py-3 font-medium text-slate-900">
                   <span
                     className="inline-flex items-center gap-2"
@@ -1140,12 +1457,25 @@ export default function UsersPage() {
       </Modal>
 
       <Modal
-        open={!!referUser}
-        title="Asignar referente"
-        onClose={() => setReferUser(null)}
+        open={!!referUser || bulk === "referrer"}
+        title={
+          bulk === "referrer"
+            ? `Asignar referente (${selected.size})`
+            : "Asignar referente"
+        }
+        onClose={() => {
+          setReferUser(null);
+          if (bulk === "referrer") setBulk(null);
+        }}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setReferUser(null)}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setReferUser(null);
+                if (bulk === "referrer") setBulk(null);
+              }}
+            >
               Cancelar
             </Button>
             <Button onClick={onAssignReferrer} disabled={saving}>
@@ -1160,9 +1490,9 @@ export default function UsersPage() {
       >
         <form onSubmit={onAssignReferrer} className="space-y-3">
           <p className="text-sm text-slate-600">
-            Anida a <strong>{userDisplayName(referUser)}</strong>
-            {referUser?.email ? ` (${referUser.email})` : ""} bajo la persona
-            que lo refirió.
+            {bulk === "referrer"
+              ? `Anida a ${selected.size} usuarios bajo la persona que los refirió.`
+              : `Anida a ${userDisplayName(referUser)}${referUser?.email ? ` (${referUser.email})` : ""} bajo la persona que lo refirió.`}
           </p>
           <div className="grid grid-cols-2 gap-2">
             <button
@@ -1257,12 +1587,25 @@ export default function UsersPage() {
       </Modal>
 
       <Modal
-        open={!!membershipUser}
-        title="Agregar membresía"
-        onClose={() => setMembershipUser(null)}
+        open={!!membershipUser || bulk === "membership"}
+        title={
+          bulk === "membership"
+            ? `Agregar membresía (${selected.size})`
+            : "Agregar membresía"
+        }
+        onClose={() => {
+          setMembershipUser(null);
+          if (bulk === "membership") setBulk(null);
+        }}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setMembershipUser(null)}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setMembershipUser(null);
+                if (bulk === "membership") setBulk(null);
+              }}
+            >
               Cancelar
             </Button>
             <Button onClick={onCreateMembership} disabled={saving}>
@@ -1273,8 +1616,9 @@ export default function UsersPage() {
       >
         <form onSubmit={onCreateMembership} className="space-y-3">
           <p className="text-sm text-slate-600">
-            Membresía para <strong>{userDisplayName(membershipUser)}</strong>
-            {membershipUser?.email ? ` (${membershipUser.email})` : ""}.
+            {bulk === "membership"
+              ? "Misma cantidad de días y precio para los seleccionados. Se omiten lista negra y los que ya tienen membresía activa."
+              : `Membresía para ${userDisplayName(membershipUser)}${membershipUser?.email ? ` (${membershipUser.email})` : ""}.`}
           </p>
           <Input
             label="Días"
@@ -1436,6 +1780,79 @@ export default function UsersPage() {
             Este usuario no tiene JWT guardado.
           </p>
         )}
+      </Modal>
+
+      <Modal
+        open={bulk === "blacklist"}
+        title={`Lista negra (${selected.size})`}
+        onClose={() => setBulk(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setBulk(null)}>
+              Volver
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => void onBulkBlacklist(true)}
+              disabled={saving}
+            >
+              {saving ? "Guardando..." : "Bloquear seleccionados"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Quedarán inactivos de inmediato y no podrán entrar hasta que los
+          quites de la lista negra.
+        </p>
+      </Modal>
+
+      <Modal
+        open={bulk === "cancel"}
+        title={`Cancelar acceso (${selected.size})`}
+        onClose={() => setBulk(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setBulk(null)}>
+              Volver
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => void onBulkCancel()}
+              disabled={saving}
+            >
+              {saving ? "Cancelando..." : "Cancelar acceso"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Se cancelan las membresías activas de los seleccionados.
+        </p>
+      </Modal>
+
+      <Modal
+        open={bulk === "delete"}
+        title={`Eliminar (${selected.size})`}
+        onClose={() => setBulk(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setBulk(null)}>
+              Volver
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => void onBulkDelete()}
+              disabled={saving}
+            >
+              {saving ? "Eliminando..." : "Eliminar"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Se borran los que no tengan membresía activa. Los demás se omiten.
+        </p>
       </Modal>
     </div>
   );
