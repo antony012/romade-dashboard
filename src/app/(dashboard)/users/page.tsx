@@ -430,14 +430,20 @@ export default function UsersPage() {
   );
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
+    const refresh = () => {
       if (modalOpen) return;
+      if (document.visibilityState !== "visible") return;
       api
         .listUsers()
         .then(setUsers)
         .catch(() => undefined);
-    }, 20_000);
-    return () => window.clearInterval(timer);
+    };
+    const timer = window.setInterval(refresh, 120_000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, [modalOpen]);
 
   const appUsers = useMemo(
