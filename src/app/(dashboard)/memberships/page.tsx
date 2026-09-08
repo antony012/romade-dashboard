@@ -44,6 +44,8 @@ export default function MembershipsPage() {
     null,
   );
   const [verifyTarget, setVerifyTarget] = useState<Membership | null>(null);
+  const [awaitTarget, setAwaitTarget] = useState<Membership | null>(null);
+  const [confirmTarget, setConfirmTarget] = useState<Membership | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [createForm, setCreateForm] = useState({
@@ -61,8 +63,12 @@ export default function MembershipsPage() {
     days: "7",
     price: "80",
   });
+  const [confirmForm, setConfirmForm] = useState({
+    days: "7",
+    price: "80",
+  });
   const [filter, setFilter] = useState<
-    "all" | "active" | "pending" | "cancelled" | "expired"
+    "all" | "active" | "pending" | "awaiting_payment" | "cancelled" | "expired"
   >("all");
   const [purgeOpen, setPurgeOpen] = useState(false);
 
@@ -113,6 +119,14 @@ export default function MembershipsPage() {
     });
   }
 
+  function openConfirm(m: Membership) {
+    setConfirmTarget(m);
+    setConfirmForm({
+      days: "7",
+      price: String(m.price ?? 80),
+    });
+  }
+
   function isUserBlacklisted(membership: Membership) {
     return users.some(
       (user) => user.id === membership.userId && user.blacklisted === true,
@@ -125,6 +139,10 @@ export default function MembershipsPage() {
       m.isPendingPayment === true ||
       m.canVerifyPayment === true
     );
+  }
+
+  function isAwaiting(m: Membership) {
+    return m.status === "awaiting_payment" || m.isAwaitingPayment === true;
   }
 
   async function onCreate(e: FormEvent) {
@@ -286,6 +304,58 @@ export default function MembershipsPage() {
     }
   }
 
+  async function onAwait() {
+    if (!awaitTarget) return;
+    setSaving(true);
+    try {
+      const updated = await api.awaitMembershipPayment(awaitTarget.id);
+      setMemberships((prev) =>
+        prev.map((m) => (m.id === updated.id ? updated : m)),
+      );
+      setAwaitTarget(null);
+      toast("Dasher en espera de pago. Su acceso quedó bloqueado.");
+    } catch (err) {
+      toast(
+        err instanceof ApiError ? err.message : "Error al poner en espera",
+        "error",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onConfirm(e: FormEvent) {
+    e.preventDefault();
+    if (!confirmTarget) return;
+
+    const price = parseMoneyAmount(confirmForm.price);
+    if (price == null) {
+      toast("El precio debe ser mayor a 0", "error");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const updated = await api.confirmMembershipPayment(confirmTarget.id, {
+        days: parsePositiveDays(confirmForm.days),
+        price,
+      });
+      setMemberships((prev) =>
+        prev.map((m) => (m.id === updated.id ? updated : m)),
+      );
+      setConfirmTarget(null);
+      setConfirmForm({ days: "7", price: "80" });
+      toast("Pago confirmado. Suscripción activa.");
+    } catch (err) {
+      toast(
+        err instanceof ApiError ? err.message : "Error al confirmar el pago",
+        "error",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function onPurgeCancelled() {
     setSaving(true);
     try {
@@ -312,6 +382,8 @@ export default function MembershipsPage() {
   function statusBadge(m: Membership) {
     if (isUserBlacklisted(m))
       return <Badge tone="danger">Lista negra</Badge>;
+    if (isAwaiting(m))
+      return <Badge tone="warning">En espera de pago</Badge>;
     if (isPending(m)) return <Badge tone="warning">Pendiente de pago</Badge>;
     if (m.isCurrentlyActive || m.status === "active")
       return <Badge tone="success">Activa</Badge>;
@@ -320,13 +392,18 @@ export default function MembershipsPage() {
     return <Badge tone="neutral">Expirada</Badge>;
   }
 
-  const cancelledCount = memberships.filter((m) => m.cancelledAt).length;
+  const cancelledCount = memberships.filter(
+    (m) => m.cancelledAt && !isAwaiting(m),
+  ).length;
   const visibleMemberships = memberships.filter((m) => {
     if (filter === "active") return m.isCurrentlyActive;
     if (filter === "pending") return isPending(m);
-    if (filter === "cancelled") return Boolean(m.cancelledAt);
+    if (filter === "awaiting_payment") return isAwaiting(m);
+    if (filter === "cancelled") return Boolean(m.cancelledAt) && !isAwaiting(m);
     if (filter === "expired")
-      return !m.isCurrentlyActive && !isPending(m) && !m.cancelledAt;
+      return (
+        !m.isCurrentlyActive && !isPending(m) && !isAwaiting(m) && !m.cancelledAt
+      );
     return true;
   });
 
@@ -358,6 +435,7 @@ export default function MembershipsPage() {
             ["all", "Todas"],
             ["active", "Activas"],
             ["pending", "Pendientes"],
+            ["awaiting_payment", "En espera de pago"],
             ["cancelled", "Canceladas"],
             ["expired", "Expiradas"],
           ] as const
@@ -436,12 +514,26 @@ export default function MembershipsPage() {
                     Editar monto
                   </Button>
                   {m.isCurrentlyActive ? (
-                    <Button
-                      variant="danger"
-                      onClick={() => setCancelTarget(m)}
-                    >
-                      Cancelar
-                    </Button>
+                    <>
+                      <Button
+                        variant="secondary"
+                        onClick={() => setAwaitTarget(m)}
+                      >
+                        Esperar pago
+                      </Button>
+                      <Button
+                        variant="danger"
+                        onClick={() => setCancelTarget(m)}
+                      >
+                        Cancelar
+                      </Button>
+                    </>
+                  ) : isAwaiting(m) ? (
+                    isUserBlacklisted(m) ? null : (
+                      <Button onClick={() => openConfirm(m)}>
+                        Confirmar pago
+                      </Button>
+                    )
                   ) : isPending(m) ? (
                     <Button onClick={() => openVerify(m)}>
                       Verificar pago
@@ -679,6 +771,73 @@ export default function MembershipsPage() {
             value={verifyForm.price}
             onChange={(e) =>
               setVerifyForm({ ...verifyForm, price: e.target.value })
+            }
+            required
+          />
+        </form>
+      </Modal>
+
+      <Modal
+        open={!!awaitTarget}
+        title="Poner en espera de pago"
+        onClose={() => setAwaitTarget(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setAwaitTarget(null)}>
+              Volver
+            </Button>
+            <Button onClick={() => void onAwait()} disabled={saving}>
+              {saving ? "Aplicando..." : "Poner en espera"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          <strong>{userDisplayName(awaitTarget?.user)}</strong> quedará
+          bloqueado hasta que confirmes su pago. En la app verá que su acceso
+          no está activo y no podrá seguir usando la función. Su acceso
+          <strong> no se renovará solo</strong> mientras esté en espera.
+        </p>
+      </Modal>
+
+      <Modal
+        open={!!confirmTarget}
+        title="Confirmar pago"
+        onClose={() => setConfirmTarget(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmTarget(null)}>
+              Volver
+            </Button>
+            <Button onClick={onConfirm} disabled={saving}>
+              {saving ? "Activando..." : "Confirmar y activar"}
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={onConfirm} className="space-y-3">
+          <p className="text-sm text-slate-600">
+            Confirma el pago y reactiva el acceso de{" "}
+            <strong>{userDisplayName(confirmTarget?.user)}</strong>. El periodo
+            de días empieza ahora.
+          </p>
+          <Input
+            label="Días"
+            type="number"
+            min={1}
+            value={confirmForm.days}
+            onChange={(e) =>
+              setConfirmForm({ ...confirmForm, days: e.target.value })
+            }
+          />
+          <Input
+            label="Precio (USD)"
+            type="number"
+            min={0.01}
+            step="0.01"
+            value={confirmForm.price}
+            onChange={(e) =>
+              setConfirmForm({ ...confirmForm, price: e.target.value })
             }
             required
           />

@@ -184,6 +184,44 @@ export const api = {
     );
   },
 
+  awaitMembershipPayment(id: string) {
+    return request<Membership>(
+      `/api/v1/admin/memberships/${id}/await-payment`,
+      { method: "PATCH" },
+    );
+  },
+
+  confirmMembershipPayment(
+    id: string,
+    options?: { days?: number; price?: number },
+  ) {
+    const params = new URLSearchParams();
+    if (options?.days != null) params.set("days", String(options.days));
+    if (options?.price != null) params.set("price", String(options.price));
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return request<Membership>(
+      `/api/v1/admin/memberships/${id}/confirm-payment${query}`,
+      { method: "PATCH" },
+    );
+  },
+
+  awaitUserPayment(id: string) {
+    return request<User>(`/api/v1/admin/users/${id}/await-payment`, {
+      method: "POST",
+    });
+  },
+
+  confirmUserPayment(id: string, options?: { days?: number; price?: number }) {
+    const params = new URLSearchParams();
+    if (options?.days != null) params.set("days", String(options.days));
+    if (options?.price != null) params.set("price", String(options.price));
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return request<User>(
+      `/api/v1/admin/users/${id}/confirm-payment${query}`,
+      { method: "POST" },
+    );
+  },
+
   purgeCancelledMemberships() {
     return request<{ deleted: number }>("/api/v1/admin/memberships/cancelled", {
       method: "DELETE",

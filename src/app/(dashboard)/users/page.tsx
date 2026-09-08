@@ -67,6 +67,12 @@ function hasPendingMembership(user: User): boolean {
   );
 }
 
+function hasAwaitingMembership(user: User): boolean {
+  return (user.memberships ?? []).some(
+    (m) => m.status === "awaiting_payment" || m.isAwaitingPayment === true,
+  );
+}
+
 function isPruebaNote(notes?: string | null): boolean {
   return /\bprueba\b/i.test(notes?.trim() ?? "");
 }
@@ -154,11 +160,14 @@ function UserActionsMenu({
   isPrueba,
   isVerified,
   isBlacklisted,
+  isAwaiting,
   onEdit,
   onNotes,
   onPrueba,
   onVerify,
   onBlacklist,
+  onAwaitPayment,
+  onConfirmPayment,
   onRefer,
   onJwt,
   onMembership,
@@ -170,11 +179,14 @@ function UserActionsMenu({
   isPrueba: boolean;
   isVerified: boolean;
   isBlacklisted: boolean;
+  isAwaiting: boolean;
   onEdit: (user: User) => void;
   onNotes: (user: User) => void;
   onPrueba: (user: User) => void;
   onVerify: (user: User) => void;
   onBlacklist: (user: User) => void;
+  onAwaitPayment: (user: User) => void;
+  onConfirmPayment: (user: User) => void;
   onRefer: (user: User) => void;
   onJwt: (user: User) => void;
   onMembership: (user: User) => void;
@@ -284,6 +296,30 @@ function UserActionsMenu({
           >
             {isBlacklisted ? "Quitar de lista negra" : "Lista negra"}
           </button>
+          {!isBlacklisted && isAwaiting ? (
+            <button
+              type="button"
+              className={`${itemClass} bg-emerald-50 font-medium text-emerald-800 hover:bg-emerald-100`}
+              onClick={() => {
+                setOpen(false);
+                onConfirmPayment(user);
+              }}
+            >
+              Confirmar pago
+            </button>
+          ) : null}
+          {!isBlacklisted && !isAwaiting ? (
+            <button
+              type="button"
+              className={`${itemClass} text-amber-700 hover:bg-amber-50`}
+              onClick={() => {
+                setOpen(false);
+                onAwaitPayment(user);
+              }}
+            >
+              Esperar confirmación de pago
+            </button>
+          ) : null}
           <button
             type="button"
             className={itemClass}
@@ -371,6 +407,10 @@ export default function UsersPage() {
   const [cancelUser, setCancelUser] = useState<User | null>(null);
   const [deleteUser, setDeleteUser] = useState<User | null>(null);
   const [blacklistUser, setBlacklistUser] = useState<User | null>(null);
+  const [awaitUser, setAwaitUser] = useState<User | null>(null);
+  const [confirmUser, setConfirmUser] = useState<User | null>(null);
+  const [confirmDays, setConfirmDays] = useState("7");
+  const [confirmPrice, setConfirmPrice] = useState("80");
   const [referUser, setReferUser] = useState<User | null>(null);
   const [referrerId, setReferrerId] = useState("");
   const [referrerQuery, setReferrerQuery] = useState("");
@@ -424,6 +464,8 @@ export default function UsersPage() {
       cancelUser ||
       deleteUser ||
       blacklistUser ||
+      awaitUser ||
+      confirmUser ||
       referUser ||
       jwtUser ||
       bulk,
@@ -815,6 +857,66 @@ export default function UsersPage() {
         err instanceof ApiError
           ? err.message
           : "No se pudo actualizar la lista negra",
+        "error",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function openConfirmPayment(user: User) {
+    const awaiting =
+      (user.memberships ?? []).find(
+        (m) => m.status === "awaiting_payment" || m.isAwaitingPayment === true,
+      ) ?? (user.memberships ?? [])[0];
+    setConfirmDays("7");
+    setConfirmPrice(String(awaiting?.price ?? 80));
+    setConfirmUser(user);
+  }
+
+  async function onAwaitPayment() {
+    if (!awaitUser) return;
+    setSaving(true);
+    try {
+      const updated = await api.awaitUserPayment(awaitUser.id);
+      setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+      setAwaitUser(null);
+      toast("Dasher en espera de pago. Su acceso quedó bloqueado.");
+    } catch (err) {
+      toast(
+        err instanceof ApiError
+          ? err.message
+          : "No se pudo poner en espera de pago",
+        "error",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onConfirmPayment(e: FormEvent) {
+    e.preventDefault();
+    if (!confirmUser) return;
+
+    const price = Number(confirmPrice);
+    const days = Number(confirmDays);
+    if (!Number.isFinite(price) || price <= 0) {
+      toast("El precio debe ser mayor a 0", "error");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const updated = await api.confirmUserPayment(confirmUser.id, {
+        days: Number.isFinite(days) && days > 0 ? days : undefined,
+        price,
+      });
+      setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+      setConfirmUser(null);
+      toast("Pago confirmado. El acceso quedó activo.");
+    } catch (err) {
+      toast(
+        err instanceof ApiError ? err.message : "No se pudo confirmar el pago",
         "error",
       );
     } finally {
@@ -1226,6 +1328,7 @@ export default function UsersPage() {
             {tableRows.map(({ user, depth }) => {
               const active = hasActiveMembership(user);
               const pending = hasPendingMembership(user);
+              const awaiting = hasAwaitingMembership(user);
               const prueba = isPruebaNote(user.notes);
               const verified = user.verified === true;
               const blacklisted = user.blacklisted === true;
@@ -1273,6 +1376,8 @@ export default function UsersPage() {
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {active ? (
                       <Badge tone="success">Activa</Badge>
+                    ) : awaiting ? (
+                      <Badge tone="warning">En espera de pago</Badge>
                     ) : pending ? (
                       <Badge tone="warning">Pendiente de pago</Badge>
                     ) : (
@@ -1312,11 +1417,14 @@ export default function UsersPage() {
                       isPrueba={prueba}
                       isVerified={verified}
                       isBlacklisted={blacklisted}
+                      isAwaiting={awaiting}
                       onEdit={openEdit}
                       onNotes={openNotes}
                       onPrueba={onTogglePrueba}
                       onVerify={onToggleVerified}
                       onBlacklist={setBlacklistUser}
+                      onAwaitPayment={setAwaitUser}
+                      onConfirmPayment={openConfirmPayment}
                       onRefer={openRefer}
                       onJwt={openJwt}
                       onMembership={openMembership}
@@ -1352,6 +1460,7 @@ export default function UsersPage() {
           {tableRows.map(({ user, depth }) => {
             const active = hasActiveMembership(user);
             const pending = hasPendingMembership(user);
+            const awaiting = hasAwaitingMembership(user);
             const prueba = isPruebaNote(user.notes);
             const verified = user.verified === true;
             const blacklisted = user.blacklisted === true;
@@ -1415,6 +1524,8 @@ export default function UsersPage() {
                   <div className="flex flex-wrap items-center gap-1.5">
                     {active ? (
                       <Badge tone="success">Activa</Badge>
+                    ) : awaiting ? (
+                      <Badge tone="warning">En espera de pago</Badge>
                     ) : pending ? (
                       <Badge tone="warning">Pendiente de pago</Badge>
                     ) : (
@@ -1476,11 +1587,14 @@ export default function UsersPage() {
                     isPrueba={prueba}
                     isVerified={verified}
                     isBlacklisted={blacklisted}
+                    isAwaiting={awaiting}
                     onEdit={openEdit}
                     onNotes={openNotes}
                     onPrueba={onTogglePrueba}
                     onVerify={onToggleVerified}
                     onBlacklist={setBlacklistUser}
+                    onAwaitPayment={setAwaitUser}
+                    onConfirmPayment={openConfirmPayment}
                     onRefer={openRefer}
                     onJwt={openJwt}
                     onMembership={openMembership}
@@ -1798,6 +1912,71 @@ export default function UsersPage() {
             hasta que lo quites de la lista negra.
           </p>
         )}
+      </Modal>
+
+      <Modal
+        open={!!awaitUser}
+        title="Esperar confirmación de pago"
+        onClose={() => setAwaitUser(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setAwaitUser(null)}>
+              Volver
+            </Button>
+            <Button onClick={() => void onAwaitPayment()} disabled={saving}>
+              {saving ? "Aplicando..." : "Poner en espera"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          <strong>{userDisplayName(awaitUser)}</strong>
+          {awaitUser?.email ? ` (${awaitUser.email})` : ""} quedará bloqueado
+          hasta que confirmes su pago. En la app verá que su acceso no está
+          activo y no podrá seguir trabajando. Su acceso{" "}
+          <strong>no se renovará solo</strong> mientras esté en espera.
+        </p>
+      </Modal>
+
+      <Modal
+        open={!!confirmUser}
+        title="Confirmar pago"
+        onClose={() => setConfirmUser(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmUser(null)}>
+              Volver
+            </Button>
+            <Button onClick={onConfirmPayment} disabled={saving}>
+              {saving ? "Activando..." : "Confirmar y activar"}
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={onConfirmPayment} className="space-y-3">
+          <p className="text-sm text-slate-600">
+            Confirma el pago y reactiva el acceso de{" "}
+            <strong>{userDisplayName(confirmUser)}</strong>. El periodo de días
+            empieza ahora.
+          </p>
+          <Input
+            label="Días"
+            type="number"
+            min={1}
+            value={confirmDays}
+            onChange={(e) => setConfirmDays(e.target.value)}
+            required
+          />
+          <Input
+            label="Precio (USD)"
+            type="number"
+            min={0.01}
+            step="0.01"
+            value={confirmPrice}
+            onChange={(e) => setConfirmPrice(e.target.value)}
+            required
+          />
+        </form>
       </Modal>
 
       <Modal
