@@ -429,7 +429,7 @@ export default function UsersPage() {
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState<
-    null | "membership" | "referrer" | "blacklist" | "unblacklist" | "cancel" | "delete"
+    null | "membership" | "referrer" | "await" | "blacklist" | "unblacklist" | "cancel" | "delete"
   >(null);
   const [form, setForm] = useState({
     firstName: "",
@@ -1081,6 +1081,42 @@ export default function UsersPage() {
     );
   }
 
+  async function onBulkAwaitPayment() {
+    const eligible = selectedUsers.filter((user) => user.blacklisted !== true);
+    if (!eligible.length) {
+      toast("Ninguno de los seleccionados puede quedar en espera", "error");
+      return;
+    }
+    setSaving(true);
+    let ok = 0;
+    let fail = 0;
+    try {
+      for (const user of eligible) {
+        try {
+          await api.awaitUserPayment(user.id);
+          ok += 1;
+        } catch {
+          fail += 1;
+        }
+      }
+      setUsers(await api.listUsers());
+      setSelected(new Set());
+      setBulk(null);
+      const skipped = selectedUsers.length - eligible.length;
+      toast(
+        fail
+          ? `${ok} en espera, ${fail} no se pudieron${skipped ? `, ${skipped} omitidos` : ""}`
+          : skipped
+            ? `${ok} en espera de pago. ${skipped} omitidos (lista negra)`
+            : ok === 1
+              ? "Dasher en espera de pago"
+              : `${ok} dashers en espera de pago`,
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function onBulkCancel() {
     await runBulk(async (user) => {
       const memberships = activeMemberships(user);
@@ -1271,6 +1307,13 @@ export default function UsersPage() {
                 }}
               >
                 Referente
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={saving}
+                onClick={() => setBulk("await")}
+              >
+                Esperar pago
               </Button>
               <Button
                 variant="secondary"
@@ -2076,6 +2119,31 @@ export default function UsersPage() {
             Este usuario no tiene JWT guardado.
           </p>
         )}
+      </Modal>
+
+      <Modal
+        open={bulk === "await"}
+        title={`Esperar pago (${selected.size})`}
+        onClose={() => setBulk(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setBulk(null)}>
+              Volver
+            </Button>
+            <Button
+              onClick={() => void onBulkAwaitPayment()}
+              disabled={saving}
+            >
+              {saving ? "Aplicando..." : "Poner en espera"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Los seleccionados quedarán bloqueados hasta que confirmes cada pago.
+          En la app verán que su acceso no está activo. Los de lista negra se
+          omiten. El acceso no se renueva solo mientras estén en espera.
+        </p>
       </Modal>
 
       <Modal
